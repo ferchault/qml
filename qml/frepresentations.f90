@@ -308,7 +308,7 @@ subroutine fgenerate_local_coulomb_matrix(central_atom_indices, central_natoms, 
     row_norms = 0.0d0
 
 
-    !$OMP PARALLEL DO PRIVATE(pair_norm, prefactor, k) REDUCTION(+:row_norms) COLLAPSE(2)
+    !$OMP PARALLEL DO PRIVATE(pair_norm, prefactor, k) REDUCTION(+:row_norms)
     do i = 1, natoms
         do l = 1, central_natoms
             k = central_atom_indices(l)
