@@ -23,7 +23,7 @@
 import numpy as np
 import copy
 
-from .ffchl_kernels import fget_kernels_fchl
+# from .ffchl_kernels import fget_kernels_fchl
 from .ffchl_kernels import fget_symmetric_kernels_fchl
 
 PTP = {\
@@ -367,7 +367,7 @@ def get_atomic_kernels_fchl(A, B, sigmas, \
 
 def get_atomic_symmetric_kernels_fchl(A, sigmas, \
         t_width=np.pi/1.0, d_width=0.2, cut_distance=5.0, \
-        r_width=1.0, order=1, c_width=0.5, scale_distance=1.0, scale_angular=0.1,
+        r_width=1.0, order=1, c_width=0.5, scale_distance=1.0, scale_angular=0.1, scale_dihedral = 1.0,
         n_width = 1.0, m_width = 1.0, l_width = 1.0, s_width = 1.0, alchemy="periodic-table"):
     """ Calculates the Gaussian kernel matrix K, where :math:`K_{ij}`:
 
@@ -435,4 +435,4 @@ def get_atomic_symmetric_kernels_fchl(A, sigmas, \
     sigmas = np.array(sigmas)
 
     return fget_symmetric_kernels_fchl(A, N1, neighbors1, sigmas, \
-                nm1, nsigmas, t_width, d_width, cut_distance, order, pd, scale_distance, scale_angular)
+                nm1, nsigmas, t_width, d_width, cut_distance, order, pd, scale_distance, scale_angular, scale_dihedral)
