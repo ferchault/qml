@@ -71,7 +71,7 @@ pure function calc_cos_angle_vectors(v1, v2) result(cos_angle)
 
 end function calc_cos_angle_vectors
 
-pure function calc_G(a, b, c, d) result(G)
+pure function calc_G(a, b, c, d, dihedral_power) result(G)
 
     implicit none
 
@@ -79,10 +79,11 @@ pure function calc_G(a, b, c, d) result(G)
     double precision, intent(in), dimension(3) :: b
     double precision, intent(in), dimension(3) :: c
     double precision, intent(in), dimension(3) :: d
+    double precision, intent(in) :: dihedral_power
 
     double precision :: G
 
-    G = 3.0d0 / (norm2(a) * norm2(b) * norm2(c) * norm2(d))**3 * ( -4.0d0 + 3.0d0 &
+    G = 3.0d0 / (norm2(a) * norm2(b) * norm2(c) * norm2(d))**(dihedral_power) * ( -4.0d0 + 3.0d0 &
         & * (calc_cos_angle_vectors(a,b)**2 + calc_cos_angle_vectors(a,c)**2 + calc_cos_angle_vectors(a,d)**2 &
         &  + calc_cos_angle_vectors(b,c)**2 + calc_cos_angle_vectors(b,d)**2 + calc_cos_angle_vectors(c,d)**2) &
         &  - 9.0d0 * (calc_cos_angle_vectors(b,c) * calc_cos_angle_vectors(c,d) * calc_cos_angle_vectors(d,b)  & 
@@ -94,7 +95,7 @@ pure function calc_G(a, b, c, d) result(G)
 
 end function calc_G
 
-pure function calc_ksi4(Ai, Bi, Ci, Di) result(ksi4)
+pure function calc_ksi4(Ai, Bi, Ci, Di, dihedral_power) result(ksi4)
 
     implicit none
 
@@ -102,6 +103,7 @@ pure function calc_ksi4(Ai, Bi, Ci, Di) result(ksi4)
     double precision, intent(in), dimension(3) :: Bi
     double precision, intent(in), dimension(3) :: Ci
     double precision, intent(in), dimension(3) :: Di
+    double precision, intent(in) :: dihedral_power
 
     double precision, dimension(3) :: a
     double precision, dimension(3) :: b
@@ -119,7 +121,7 @@ pure function calc_ksi4(Ai, Bi, Ci, Di) result(ksi4)
     e = Bi - Di
     f = Ci - Di
 
-    ksi4 = calc_G(c, a, f, d) + calc_G(c, e, f, b) + calc_G(b, a, e, d)
+    ksi4 = calc_G(c, a, f, d, dihedral_power) + calc_G(c, e, f, b, dihedral_power) + calc_G(b, a, e, d, dihedral_power)
 
 end function
 
@@ -159,7 +161,7 @@ function print_ksi4(X, nneighbors) result(ksi)
 
 end function print_ksi4
 
-pure function calc_ksi3(X, j, k) result(ksi3)
+pure function calc_ksi3(X, j, k, angular_power) result(ksi3)
 
     implicit none
 
@@ -167,6 +169,8 @@ pure function calc_ksi3(X, j, k) result(ksi3)
 
     integer, intent(in) :: j
     integer, intent(in) :: k
+
+    double precision, intent(in) :: angular_power
 
     double precision :: cos_i, cos_j, cos_k
     double precision :: di, dj, dk
@@ -181,7 +185,7 @@ pure function calc_ksi3(X, j, k) result(ksi3)
     dj = x(1, k)
     di = norm2(x(3:5, j) - x(3:5, k))
 
-    ksi3 = (1.0d0 + 3.0d0 * cos_i*cos_j*cos_k) / (di * dj * dk)**3
+    ksi3 = (1.0d0 + 3.0d0 * cos_i*cos_j*cos_k) / (di * dj * dk)**(angular_power)
 
 end function calc_ksi3
 
@@ -399,369 +403,12 @@ end function atomic_distl2
 end module fchl_utils
 
 
-! subroutine fget_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
-!        & sigmas, nm1, nm2, nsigmas, &
-!        & t_width, d_width, cut_distance, order, pd, &
-!        & distance_scale, angular_scale, kernels)
-! 
-!     use fchl_utils, only: atomic_distl2, calc_angle, calc_ksi3, calc_ksi4, calc_dihedral
-! 
-!     implicit none
-! 
-!     ! fchl descriptors for the training set, format (i,maxatoms,5,maxneighbors)
-!     double precision, dimension(:,:,:,:), intent(in) :: x1
-!     double precision, dimension(:,:,:,:), intent(in) :: x2
-! 
-!     ! List of numbers of atoms in each molecule
-!     integer, dimension(:), intent(in) :: n1
-!     integer, dimension(:), intent(in) :: n2
-! 
-!     ! Number of neighbors for each atom in each compound
-!     integer, dimension(:,:), intent(in) :: nneigh1
-!     integer, dimension(:,:), intent(in) :: nneigh2
-! 
-!     ! Sigma in the Gaussian kernel
-!     double precision, dimension(:), intent(in) :: sigmas
-! 
-!     ! Number of molecules
-!     integer, intent(in) :: nm1
-!     integer, intent(in) :: nm2
-! 
-!     ! Number of sigmas
-!     integer, intent(in) :: nsigmas
-! 
-!     double precision, intent(in) :: t_width
-!     double precision, intent(in) :: d_width 
-!     double precision, intent(in) :: cut_distance
-!     integer, intent(in) :: order
-!     double precision, intent(in) :: distance_scale
-!     double precision, intent(in) :: angular_scale
-! 
-!     ! -1.0 / sigma^2 for use in the kernel
-!     double precision, dimension(nsigmas) :: inv_sigma2
-! 
-!     double precision, dimension(:,:), intent(in) :: pd
-! 
-!     ! Resulting alpha vector
-!     double precision, dimension(nsigmas,nm1,nm2), intent(out) :: kernels
-! 
-!     ! Internal counters
-!     integer :: i, j, k , l
-!     integer :: ni, nj
-!     integer :: a, b, m, n
-! 
-!     double precision :: dihedral1
-!     double precision :: dihedral2
-!     double precision :: dihedral3
-!     double precision :: dihedral4
-!     double precision :: dihedral5
-!     double precision :: dihedral6
-! 
-!     double precision :: ksi4
-! 
-!     ! Temporary variables necessary for parallelization
-!     double precision :: l2dist
-!     double precision, allocatable, dimension(:,:) :: atomic_distance
-! 
-!     ! Pre-computed terms in the full distance matrix
-!     double precision, allocatable, dimension(:,:) :: selfl21
-!     double precision, allocatable, dimension(:,:) :: selfl22
-! 
-!     ! Pre-computed terms
-!     double precision, allocatable, dimension(:,:,:) :: ksi1
-!     double precision, allocatable, dimension(:,:,:) :: ksi2
-! 
-!     double precision, allocatable, dimension(:,:,:,:,:) :: sinp1
-!     double precision, allocatable, dimension(:,:,:,:,:) :: sinp2
-!     double precision, allocatable, dimension(:,:,:,:,:) :: cosp1
-!     double precision, allocatable, dimension(:,:,:,:,:) :: cosp2
-! 
-!     ! Value of PI at full FORTRAN precision.
-!     double precision, parameter :: pi = 4.0d0 * atan(1.0d0)
-! 
-!     ! counter for periodic distance
-!     integer :: pj, pk, pl
-!     integer :: pmax1
-!     integer :: pmax2
-!     integer :: nneighi
-!     double precision :: theta
-! 
-!     double precision :: ksi3
-!     double precision :: cos_m, sin_m
-!     double precision :: ang_norm2
-! 
-!     ang_norm2 = 0.0d0
-! 
-!     do n = -10000, 10000
-!         ang_norm2 = ang_norm2 + exp(-((t_width * n)**2)) & 
-!             & * (2.0d0 - 2.0d0 * cos(n * pi))
-!     end do
-! 
-!     ang_norm2 = sqrt(ang_norm2 * pi) * 2.0d0
-! 
-!     pmax1 = 0
-!     pmax2 = 0
-! 
-!     do a = 1, nm1
-!         pmax1 = max(pmax1, int(maxval(x1(a,1,2,:n1(a)))))
-!     enddo
-!     do a = 1, nm2
-!         pmax2 = max(pmax2, int(maxval(x2(a,1,2,:n2(a)))))
-!     enddo
-! 
-!     inv_sigma2(:) = -1.0d0 / (sigmas(:))**2
-! 
-!     allocate(ksi1(nm1, maxval(n1), maxval(nneigh1)))
-!     allocate(ksi2(nm2, maxval(n2), maxval(nneigh2)))
-! 
-!     ksi1 = 0.0d0
-!     ksi2 = 0.0d0
-! 
-!     !$OMP PARALLEL DO PRIVATE(ni, nneighi)
-!     do a = 1, nm1
-!         ni = n1(a)
-!         do i = 1, ni
-!             nneighi = nneigh1(a, i)
-!             do j = 2, nneighi
-!                 ksi1(a, i, j) = 1.0d0 / x1(a, i, 1, j)**6
-!             enddo
-!         enddo
-!     enddo
-!     !$OMP END PARALLEL do
-! 
-!     !$OMP PARALLEL DO PRIVATE(ni, nneighi)
-!     do a = 1, nm2
-!         ni = n2(a)
-!         do i = 1, ni
-!             nneighi = nneigh2(a, i)
-!             do j = 2, nneighi
-!                 ksi2(a, i, j) = 1.0d0 / x2(a, i, 1, j)**6
-!             enddo
-!         enddo
-!     enddo
-!     !$OMP END PARALLEL do
-! 
-! 
-!     allocate(cosp1(nm1, maxval(n1), pmax1, order, maxval(nneigh1)))
-!     allocate(sinp1(nm1, maxval(n1), pmax1, order, maxval(nneigh1)))
-! 
-!     cosp1 = 0.0d0
-!     sinp1 = 0.0d0
-! 
-!     !$OMP PARALLEL DO PRIVATE(ni, nneighi, ksi3, pj, pk, theta, sin_m, cos_m) REDUCTION(+:cosp1,sinp1)
-!     do a = 1, nm1
-!         ni = n1(a)
-! 
-!         do i = 1, ni
-!             nneighi = nneigh1(a, i)
-! 
-!             do j = 2, nneighi
-!                 do k = j+1, nneighi
-! 
-!                     ksi3 = calc_ksi3(X1(a,i,:,:), j, k)
-!                     theta = calc_angle(x1(a, i, 3:5, j), &
-!                         &  x1(a, i, 3:5, 1), x1(a, i, 3:5, k))
-! 
-!                     pj =  int(x1(a,i,2,k))
-!                     pk =  int(x1(a,i,2,j))
-! 
-!                     do m = 1, order
-! 
-!                         cos_m = (cos(m * theta) - cos((theta + pi) * m))*ksi3
-!                         sin_m = (sin(m * theta) - sin((theta + pi) * m))*ksi3
-! 
-!                         cosp1(a, i, pj, m, j) = cosp1(a, i, pj, m, j) + cos_m
-!                         sinp1(a, i, pj, m, j) = sinp1(a, i, pj, m, j) + sin_m
-! 
-!                         cosp1(a, i, pk, m, k) = cosp1(a, i, pk, m, k) + cos_m
-!                         sinp1(a, i, pk, m, k) = sinp1(a, i, pk, m, k) + sin_m
-! 
-!                     enddo
-!                 enddo
-!             enddo
-!         enddo
-!     enddo
-!     !$OMP END PARALLEL do
-! 
-!     allocate(cosp2(nm2, maxval(n2), pmax2, order, maxval(nneigh2)))
-!     allocate(sinp2(nm2, maxval(n2), pmax2, order, maxval(nneigh2)))
-! 
-!     cosp2 = 0.0d0
-!     sinp2 = 0.0d0
-! 
-!     !$OMP PARALLEL DO PRIVATE(ni, nneighi, ksi3, pj, pk, theta, cos_m, sin_m) REDUCTION(+:cosp2,sinp2)
-!     do a = 1, nm2
-!         ni = n2(a)
-! 
-!         do i = 1, ni
-!             nneighi = nneigh2(a, i)
-! 
-!             do j = 2, nneighi
-!                 do k = j+1, nneighi
-! 
-!                     ksi3 = calc_ksi3(X2(a,i,:,:), j, k)
-!                     theta = calc_angle(x2(a, i, 3:5, j), &
-!                         &  x2(a, i, 3:5, 1), x2(a, i, 3:5, k))
-! 
-!                     pk =  int(x2(a,i,2,k))
-!                     pj =  int(x2(a,i,2,j))
-! 
-!                     do m = 1, order
-! 
-!                         cos_m = (cos(m * theta) - cos((theta + pi) * m))*ksi3
-!                         sin_m = (sin(m * theta) - sin((theta + pi) * m))*ksi3
-! 
-!                         cosp2(a, i, pk, m, j) = cosp2(a, i, pk, m, j) + cos_m
-!                         sinp2(a, i, pk, m, j) = sinp2(a, i, pk, m, j) + sin_m
-! 
-!                         cosp2(a, i, pj, m, k) = cosp2(a, i, pj, m, k) + cos_m
-!                         sinp2(a, i, pj, m, k) = sinp2(a, i, pj, m, k) + sin_m
-! 
-!                     enddo
-!                 enddo
-!             enddo
-!         enddo
-!     enddo
-!     !$OMP END PARALLEL do
-! 
-!     ! allocate(cosp3(nm2, maxval(n2), pmax2, order, maxval(nneigh2)))
-!     ! allocate(sinp3(nm2, maxval(n2), pmax2, order, maxval(nneigh2)))
-! 
-!     ! do a = 1, nm1
-!     !     ni = n1(a)
-! 
-!     !     do i = 1, ni
-!     !         nneighi = nneigh1(a, i)
-! 
-!     !         do j = 2, nneighi
-!     !             ! do k = j+1, nneighi
-!     !             !     do l = k+1, nneighi
-!     !             do k = 1, nneighi
-!     !                 do l = 1, nneighi
-! 
-!     !                     dihedral1 = calc_dihedral(x1(a, i, 3:5, 1), x1(a, i, 3:5, j), x1(a, i, 3:5, k), x1(a, i, 3:5, l))
-! 
-!     !                     ! dihedral2 = calc_dihedral(x1(a, i, 3:5, 1), x1(a, i, 3:5, j), x1(a, i, 3:5, l), x1(a, i, 3:5, k))
-!     !                     ! dihedral3 = calc_dihedral(x1(a, i, 3:5, 1), x1(a, i, 3:5, k), x1(a, i, 3:5, j), x1(a, i, 3:5, l))
-!     !                     ! dihedral4 = calc_dihedral(x1(a, i, 3:5, 1), x1(a, i, 3:5, k), x1(a, i, 3:5, l), x1(a, i, 3:5, j))
-!     !                     ! dihedral5 = calc_dihedral(x1(a, i, 3:5, 1), x1(a, i, 3:5, l), x1(a, i, 3:5, j), x1(a, i, 3:5, k))
-!     !                     ! dihedral6 = calc_dihedral(x1(a, i, 3:5, 1), x1(a, i, 3:5, l), x1(a, i, 3:5, k), x1(a, i, 3:5, j))
-! 
-!     !                     ksi4 = calc_ksi4(x1(a, i, 3:5, 1), &
-!     !                                    & x1(a, i, 3:5, j), &
-!     !                                    & x1(a, i, 3:5, k), &
-!     !                                    & x1(a, i, 3:5, l))
-!     !                 
-!     !                     pj =  int(x2(a,i,2,j))
-!     !                     pk =  int(x2(a,i,2,k))
-!     !                     pl =  int(x2(a,i,2,l))
-! 
-!     !                     do m = 1, order
-! 
-!     !                         cos_m = (cos(m * dihedral1) - cos((dihedral1 + pi) * m))*ksi4
-!     !                         sin_m = (sin(m * dihedral1) - sin((dihedral1 + pi) * m))*ksi4
-! 
-!     !                         cosp2(a, i, p, m, j) = cosp2(a, i, p, m, j) + cos_m
-!     !                         sinp2(a, i, p, m, j) = sinp2(a, i, p, m, j) + sin_m
-! 
-! 
-!     !                     enddo
-! 
-!     !                 enddo
-!     !             enddo
-!     !         enddo
-!     !     enddo
-!     ! enddo
-! 
-! 
-!     allocate(selfl21(nm1, maxval(n1)))
-!     allocate(selfl22(nm2, maxval(n2)))
-! 
-!     !$OMP PARALLEL DO PRIVATE(ni)
-!     do a = 1, nm1
-!         ni = n1(a)
-!         do i = 1, ni
-! 
-!             selfl21(a,i) = atomic_distl2(x1(a,i,:,:), x1(a,i,:,:), &
-!                 & nneigh1(a,i), nneigh1(a,i), ksi1(a,i,:), ksi1(a,i,:), &
-!                 & sinp1(a,i,:,:,:), sinp1(a,i,:,:,:), &
-!                 & cosp1(a,i,:,:,:), cosp1(a,i,:,:,:), &
-!                 & t_width, d_width, cut_distance, order, & 
-!                 & pd, ang_norm2,distance_scale, angular_scale)
-! 
-!         enddo
-!     enddo
-!     !$OMP END PARALLEL DO
-! 
-!     !$OMP PARALLEL DO PRIVATE(ni)
-!     do a = 1, nm2
-!         ni = n2(a)
-!         do i = 1, ni
-!             selfl22(a,i) = atomic_distl2(x2(a,i,:,:), x2(a,i,:,:), &
-!                 & nneigh2(a,i), nneigh2(a,i), ksi2(a,i,:), ksi2(a,i,:), &
-!                 & sinp2(a,i,:,:,:), sinp2(a,i,:,:,:), &
-!                 & cosp2(a,i,:,:,:), cosp2(a,i,:,:,:), &
-!                 & t_width, d_width, cut_distance, order, &
-!                 & pd, ang_norm2, distance_scale, angular_scale)
-!         enddo
-!     enddo
-!     !$OMP END PARALLEL DO
-! 
-! 
-!     allocate(atomic_distance(maxval(n1), maxval(n2)))
-! 
-!     kernels(:,:,:) = 0.0d0
-!     atomic_distance(:,:) = 0.0d0
-! 
-!     !$OMP PARALLEL DO schedule(dynamic) PRIVATE(l2dist,atomic_distance,ni,nj)
-!     do b = 1, nm2
-!         nj = n2(b)
-!         do a = 1, nm1
-!             ni = n1(a)
-! 
-!             atomic_distance(:,:) = 0.0d0
-! 
-!             do i = 1, ni
-!                 do j = 1, nj
-! 
-!                     l2dist = atomic_distl2(x1(a,i,:,:), x2(b,j,:,:), & 
-!                         & nneigh1(a,i), nneigh2(b,j), ksi1(a,i,:), ksi2(b,j,:), &
-!                         & sinp1(a,i,:,:,:), sinp2(b,j,:,:,:), &
-!                         & cosp1(a,i,:,:,:), cosp2(b,j,:,:,:), &
-!                         & t_width, d_width, cut_distance, order, &
-!                         & pd, ang_norm2, distance_scale, angular_scale)
-! 
-!                     l2dist = selfl21(a,i) + selfl22(b,j) - 2.0d0 * l2dist
-!                     atomic_distance(i,j) = l2dist
-! 
-!                 enddo
-!             enddo
-! 
-!             do k = 1, nsigmas
-!                 kernels(k, a, b) = sum(exp(atomic_distance(:ni,:nj) &
-!                     & * inv_sigma2(k)))
-!             enddo
-! 
-!         enddo
-!     enddo
-!     !$OMP END PARALLEL DO
-! 
-!     deallocate(atomic_distance)
-!     deallocate(selfl21)
-!     deallocate(selfl22)
-!     deallocate(ksi1)
-!     deallocate(ksi2)
-!     deallocate(cosp1)
-!     deallocate(cosp2)
-!     deallocate(sinp1)
-!     deallocate(sinp2)
-! 
-! end subroutine fget_kernels_fchl
-
 
 subroutine fget_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsigmas, &
-       & t_width, d_width, cut_distance, order, pd, &
-       & distance_scale, angular_scale, dihedral_scale, kernels)
+    & t_width, d_width, cut_distance, order, pd, &
+    & distance_scale, angular_scale, dihedral_scale, &
+    & distance_power, angular_power, dihedral_power, &
+    & kernels)
 
     use fchl_utils, only: atomic_distl2, calc_angle, calc_ksi3, calc_dihedral, calc_ksi4, &
         & cross_product
@@ -793,6 +440,10 @@ subroutine fget_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsigmas, &
     double precision, intent(in) :: distance_scale
     double precision, intent(in) :: angular_scale
     double precision, intent(in) :: dihedral_scale
+    
+    double precision, intent(in) :: angular_power
+    double precision, intent(in) :: dihedral_power
+    double precision, intent(in) :: distance_power
 
     ! -1.0 / sigma^2 for use in the kernel
     double precision, dimension(nsigmas) :: inv_sigma2
@@ -867,7 +518,7 @@ subroutine fget_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsigmas, &
         do i = 1, ni
             nneighi = nneigh1(a, i)
             do j = 2, nneighi
-                ksi1(a, i, j) = 1.0d0 / x1(a,i,1,j)**6
+                ksi1(a, i, j) = 1.0d0 / x1(a,i,1,j)**(distance_power)
             enddo
         enddo
     enddo
@@ -889,7 +540,7 @@ subroutine fget_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsigmas, &
             do j = 2, nneighi
                 do k = j+1, nneighi
 
-                    ksi3 = calc_ksi3(X1(a,i,:,:), j, k)
+                    ksi3 = calc_ksi3(X1(a,i,:,:), j, k, angular_power)
                     theta = calc_angle(x1(a, i, 3:5, j), &
                         &  x1(a, i, 3:5, 1), x1(a, i, 3:5, k))
 
@@ -948,7 +599,7 @@ subroutine fget_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsigmas, &
                         ksi4 = calc_ksi4(x1(a, i, 3:5, 1), &
                                        & x1(a, i, 3:5, j), &
                                        & x1(a, i, 3:5, k), &
-                                       & x1(a, i, 3:5, l))
+                                       & x1(a, i, 3:5, l), dihedral_power)
                    
                         pj =  int(x1(a,i,2,j))
 
