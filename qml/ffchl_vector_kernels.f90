@@ -551,6 +551,8 @@ subroutine fget_scalar_vector_alphas_fchl(x1, forces, energies, nneigh1, &
     use ffchl_module, only: scalar, get_threebody_fourier, get_twobody_weights, &
                         & get_displaced_representaions, get_angular_norm2
 
+    use omp_lib, only: omp_get_wtime
+
     implicit none
 
     double precision, allocatable, dimension(:,:,:,:) :: fourier
@@ -656,6 +658,9 @@ subroutine fget_scalar_vector_alphas_fchl(x1, forces, energies, nneigh1, &
     double precision, dimension(nm1) :: e_scratch
     double precision, allocatable, dimension(:,:,:) :: kernel_molecular
     double precision, allocatable, dimension(:,:) :: kernel_molecular_scratch
+    double precision, allocatable, dimension(:,:,:) :: kernel_MA
+
+    double precision :: t_start, t_end
 
     write (*,*) "INIT"
 
@@ -804,10 +809,17 @@ subroutine fget_scalar_vector_alphas_fchl(x1, forces, energies, nneigh1, &
         enddo
 
         do k = 1, nsigmas
-            write (*,*) "    DSYRK", sigmas(k)
+
+            write (*,"(A,F12.4)", advance="no") "     DSYRK()    sigma =", sigmas(k)
+
+            t_start = omp_get_wtime()
             ! DSYRK call corresponds to: C := 1.0 *  K^T * K + 1.0 * C
             call dsyrk("U", "T", na1, na1, 1.0d0, kernel_delta(:,:,k), na1, &
                 & 1.0d0, kernel_scratch(:,:,k), na1)
+            
+            t_end = omp_get_wtime()
+
+            write (*,"(A,F12.4,A)") "     Time = ", t_end - t_start, " s"
 
             write (*,*) "    DGEMV", sigmas(k)
             ! DGEMV call corresponds to alphas := 1.0 * K^T * F + 1.0 * alphas
@@ -866,25 +878,35 @@ subroutine fget_scalar_vector_alphas_fchl(x1, forces, energies, nneigh1, &
 
     allocate(kernel_molecular(nm1,nm1,k))
     allocate(kernel_molecular_scratch(nm1,nm1))
+    allocate(kernel_MA(nm1,na1,k))
 
     kernel_molecular = 0.0d0
 
     do k = 1, nsigmas
         do j = 1, nm1
-            do i = 1, nm1
+            ! do i = 1, nm1
 
-                l2dist = sum(kernel_delta(istart(i):iend(i), istart(j):iend(j), k))
-                kernel_molecular(i, j, k) = l2dist
-                kernel_molecular(j, i, k) = l2dist
+            !     l2dist = sum(kernel_delta(istart(i):iend(i), istart(j):iend(j), k)) &
+            !         &  / (n1(i) * n1(j))
+            !     kernel_molecular(i, j, k) = l2dist
+            !     kernel_molecular(j, i, k) = l2dist
 
-                ! write(*,*) i, j, istart(i), iend(i), istart(j), iend(j)
+            !     ! write(*,*) i, j, istart(i), iend(i), istart(j), iend(j)
+            ! enddo
+            ! write(*,*) kernel_molecular(j,:6,k)
+
+            do i = 1, na1
+
+                l2dist = sum(kernel_delta(i, istart(j):iend(j), k)) / n1(j)
+
+                kernel_MA(j, i, k) = l2dist
+
             enddo
-            write(*,*) kernel_molecular(j,:6,k)
         enddo
     enddo
     
-    write(*,*) "Y"
-    write(*,*) y(:38,1)
+    ! write(*,*) "Y"
+    ! write(*,*) y(:,1)
 
     e(:nm1) = energies(:nm1) / n1(:nm1)
 
@@ -895,30 +917,33 @@ subroutine fget_scalar_vector_alphas_fchl(x1, forces, energies, nneigh1, &
 
         ! DGEMM call corresponds to: C := 1.0 *  K^T * K + 1.0 * C
         write (*,*) "    DGEMM", sigmas(k)
-        call dgemm("t", "n", nm1, nm1, nm1, 1.0d0, kernel_molecular(:,:,k), nm1, &
-            & kernel_molecular(:,:,k), nm1, 0.0d0, kernel_molecular_scratch(:,:), nm1)
+        ! call dgemm("t", "n", nm1, nm1, nm1, 1.0d0, kernel_molecular(:,:,k), nm1, &
+        !     & kernel_molecular(:,:,k), nm1, 0.0d0, kernel_molecular_scratch(:,:), nm1)
+        call dgemm("t", "n", na1, na1, nm1, 1.0d0, kernel_MA(:,:,k), nm1, &
+            & kernel_MA(:,:,k), nm1, 1.0d0, kernel_scratch(:,:,k), na1)
 
-        do j = 1, nm1
-            do i = 1, nm1
-                kernel_scratch(istart(i):iend(i), istart(j):iend(j), k) &
-                    & = kernel_scratch(istart(i):iend(i), istart(j):iend(j), k) &
-                    & + kernel_molecular_scratch(i,j)
-            enddo
-        enddo
+        ! do j = 1, nm1
+        !     do i = 1, nm1
+        !         kernel_scratch(istart(i):iend(i), istart(j):iend(j), k) &
+        !             & = kernel_scratch(istart(i):iend(i), istart(j):iend(j), k) &
+        !             & + kernel_molecular_scratch(i,j)
+        !     enddo
+        ! enddo
 
         write (*,*) "    DGEMV", sigmas(k)
         ! DGEMV call corresponds to alphas := 1.0 * K^T * F + 1.0 * alphas
-        call dgemv("T", nm1, nm1, 1.0d0, kernel_molecular(:,:,k), nm1, &
-                        & e(:), 1, 0.0d0, e_scratch(:), 1)
-                        !& energies(:), 1, 0.0d0, e_scratch(:), 1)
+        ! call dgemv("T", nm1, nm1, 1.0d0, kernel_molecular(:,:,k), nm1, &
+        !               & e(:), 1, 0.0d0, e_scratch(:), 1)
+        call dgemv("T", nm1, na1, 1.0d0, kernel_ma(:,:,k), nm1, &
+                        & energies(:), 1, 1.0d0, y(:,k), 1)
 
-        do i = 1, nm1
-            y(istart(i):iend(i),k) = y(istart(i):iend(i),k) + e_scratch(i)
-        enddo
+        ! do i = 1, nm1
+        !     y(istart(i):iend(i),k) = y(istart(i):iend(i),k) + e_scratch(i)
+        ! enddo
     enddo
 
-    write(*,*) "Y"
-    write(*,*) y(:38,1)
+    ! write(*,*) "Y"
+    ! write(*,*) y(:,1)
 
     deallocate(kernel_molecular)
     deallocate(kernel_molecular_scratch)
