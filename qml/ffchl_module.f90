@@ -2,6 +2,9 @@ module ffchl_module
 
     implicit none
 
+    ! dx for nummerical derivative
+    double precision, parameter :: dx_numm = 5.0d-4
+
 contains
 
 pure function cut_function(r, cut_start, cut_distance) result(f)
@@ -39,7 +42,7 @@ pure function cut_function(r, cut_start, cut_distance) result(f)
     else
 
         x = (ru - r) / (ru - rl)
-        f = 1.0d0 - (10.0d0 * x**3) + (15.0d0 * x**4) - (6.0d0 * x**5)
+        f = (10.0d0 * x**3) - (15.0d0 * x**4) + (6.0d0 * x**5)
 
     endif
 

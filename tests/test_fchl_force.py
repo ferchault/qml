@@ -3,6 +3,14 @@ from __future__ import print_function
 import sys
 sys.path.append("/home/andersx/dev/qml/fchl_forceenergy/build/lib.linux-x86_64-2.7")
 
+import matplotlib.pyplot as plt
+
+import scipy
+import scipy.stats
+
+
+import numpy as np
+from numpy.linalg import norm
 import ast
 
 import numpy as np
@@ -23,15 +31,15 @@ np.set_printoptions(linewidth=19999999999, suppress=True, edgeitems=10)
 
 CUT_DISTANCE = 1e6
 # SIGMAS = [5.0]
-SIGMAS = [0.64] # Optimal for old cost-functions
+# SIGMAS = [0.64] # Optimal for old cost-functions
 LLAMBDA = 1e-8
 # SIGMAS = [0.5, 0.25]
-# SIGMAS = [0.01 * 2**i for i in range(20)]
-# SIGMAS = [0.01 * 2**i for i in range(8)]
+# SIGMAS = [0.01 * 2**i for i in range(3,12)]
+SIGMAS = [0.01 * 2**i for i in range(20)]
 SIZE = 19
-
-TRAINING = 200
-TEST     = 20
+ALCHEMY = "off"
+TRAINING = int(sys.argv[1])
+TEST     = 50
 
 def csv_to_atomic_reps(csv_filename):
 
@@ -60,7 +68,7 @@ def csv_to_atomic_reps(csv_filename):
             y.append(force[j])
 
 
-    return np.array(reps), np.array(y)
+    return np.array(reps), -np.array(y)
 
 
 def csv_to_molecular_reps(csv_filename, force_key="forces", energy_key="energy"):
@@ -107,7 +115,7 @@ def test_old_forces():
     alphas = get_atomic_force_alphas_fchl(X, Y, SIGMAS,
                     llambda = LLAMBDA,
                     cut_distance=CUT_DISTANCE, 
-                    alchemy="off"
+                    alchemy=ALCHEMY,
                 )
 
 
@@ -117,14 +125,14 @@ def test_old_forces():
     np.save("alpha_old.npy", alphas)
     Ks  = get_atomic_force_kernels_fchl(X, Xs, SIGMAS,
                     cut_distance=CUT_DISTANCE, 
-                    alchemy="off"
+                    alchemy=ALCHEMY,
                 )
 
 
     for i, sigma in enumerate(SIGMAS):
         Yss = np.einsum('jkl,l->kj', Ks[i], alphas[i])
 
-        print("RMSE FORCE COMPONENT", np.mean(np.abs(Yss - Ys)))
+        print("RMSE FORCE COMPONENT", np.mean(np.abs(Yss - Ys)), sigma)
 
 def test_old_energy():
     
@@ -147,12 +155,12 @@ def test_old_energy():
 
     K = get_local_symmetric_kernels_fchl(X, SIGMAS,
                     cut_distance=CUT_DISTANCE, 
-                    alchemy="off"
+                    alchemy=ALCHEMY,
                 )
 
     Ks = get_local_kernels_fchl(Xs, X, SIGMAS,
                     cut_distance=CUT_DISTANCE, 
-                    alchemy="off"
+                    alchemy=ALCHEMY,
                 )
     for i, sigma in enumerate(SIGMAS):
 
@@ -174,7 +182,7 @@ def test_new_forces():
     #                            force_key="orca_forces", energy_key="orca_energy")
     Xall, Fall, Eall = csv_to_molecular_reps("data/molecule_300.csv", 
                                 force_key="forces", energy_key="om2_energy")
-    Eall = np.array(Eall)
+    Eall = np.array(Eall) *2
     train = TRAINING
     test = TEST
 
@@ -189,26 +197,39 @@ def test_new_forces():
     alphas = get_scalar_vector_alphas_fchl(X, F, E, SIGMAS,
                     llambda = LLAMBDA,
                     cut_distance=CUT_DISTANCE, 
-                    alchemy="off"
+                    alchemy=ALCHEMY,
                 )
 
+    # np.save("alphas_new.npy", alphas)
+    # exit()
+
+    # alphas = np.load("alphas_new.npy")
+
+    print("TEST FORCE KERNEL")
     Ks_force = get_scalar_vector_kernels_fchl(X, Xs, SIGMAS,
                     cut_distance=CUT_DISTANCE, 
-                    alchemy="off"
+                    alchemy=ALCHEMY,
                 )
+    np.save("Ks_force_new.npy", Ks_force)
 
     # Ks_small = get_local_kernels_fchl(X, Xs, SIGMAS,
     #                 cut_distance=CUT_DISTANCE, 
-    #                 alchemy="off"
+    #                 alchemy=ALCHEMY,
     #             )
 
-    X  = np.reshape(X, (TRAINING*SIZE,5,SIZE))
+    X = np.reshape(X, (TRAINING*SIZE,5,SIZE))
     Xs = np.reshape(Xs, (TEST*SIZE,5,SIZE))
 
+    print("TEST ENERGY KERNEL")
     Ks_large = get_atomic_kernels_fchl(X, Xs, SIGMAS,
                     cut_distance=CUT_DISTANCE, 
-                    alchemy="off"
+                    alchemy=ALCHEMY,
                 )
+    
+    # K_large = get_atomic_kernels_fchl(X, X, SIGMAS,
+    #                 cut_distance=CUT_DISTANCE, 
+    #                 alchemy=ALCHEMY,
+    #            )
 
     for i, sigma in enumerate(SIGMAS):
    
@@ -219,49 +240,34 @@ def test_new_forces():
         Fs = np.array(Fs)
         Fs = np.reshape(Fs, (Fss.shape[0], Fss.shape[1]))
 
-        print("RMSE FORCE COMPONENT", np.mean(np.abs(Fss - Fs)))
+        print("RMSE FORCE COMPONENT", np.mean(np.abs(Fss - Fs)), sigma)
 
+        # print(Fs)
+        # print(Fss)
+        # plt.scatter(Fs, Fss, label="Force")
+        # plt.legend()
+        # plt.savefig("F_test.png")
+        # plt.clf()
+       
 
         
         Ks = np.zeros((TRAINING*SIZE,TEST))
-        for k in range(TEST):
-           for j in range(TRAINING*SIZE):
 
-               Ks[j,k] = np.sum(Ks_large[i,j,k*SIZE:(k+1)*SIZE]) / SIZE
-        
-        Ess = np.dot(Ks.T, alphas[i])    
+        for j in range(TRAINING*SIZE):
+            for k in range(TEST):
 
-        # Ks = np.zeros((TRAINING*SIZE,TEST*SIZE))
+               Ks[j,k] = np.sum(Ks_large[i,j,k*SIZE:(k+1)*SIZE])
 
-        # for k in range(TEST):
-        #    for j in range(TRAINING):
+        Ess = np.dot(Ks.T, alphas[i])
 
-        #        Ks[j*SIZE:(j+1)*SIZE,k*SIZE:(k+1)*SIZE] = Ks_small[i,j,k] / (SIZE**2)
-        # 
-        # Ess = np.dot(Ks.T, alphas[i])    
 
-        # Ess2 = np.zeros((TEST))
+        # slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(Es,Ess)
+        # Ess -= intercept
 
-        # # print(Ks)
-        # print(Ess)
-        # print(alphas[i])
+        print("RMSE ENERGY", np.mean(np.abs(Ess/2 - Es/2)), sigma,
+                         scipy.stats.linregress(Ess/2, Es/2),
+            )
 
-        # for j in range(TEST):
-        #     Ess2[i] = np.sum(Ess[j*SIZE:(j+1)*SIZE])
-        # 
-        # Ess = np.reshape(Ess, (TEST,SIZE))
-
-        # print(alphas)
-        # print(Ess)
-        # print(Ess.shape)
-
-        # Ess = np.sum(Ess, axis=1)
-        # # print(Ess2)
-        print(Ess)
-        print(Es)
-
-        print("RMSE ENERGY", np.mean(np.abs(Ess - Es)), sigma)
-    
 
 if __name__ == "__main__":
 
@@ -270,7 +276,6 @@ if __name__ == "__main__":
     Eall = np.array(Eall)
     print("STD ENERGY", Eall.std())
 
-    # test_old_forces()
+    test_old_forces()
     # test_old_energy()
-    test_new_forces()
-
+    # test_new_forces()

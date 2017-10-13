@@ -4,7 +4,7 @@ subroutine fget_atomic_force_alphas_fchl(x1, forces, nneigh1, &
        & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, alphas)
 
     use ffchl_module, only: scalar, get_threebody_fourier, get_twobody_weights, &
-                        & get_displaced_representaions, get_angular_norm2
+                        & get_displaced_representaions, get_angular_norm2, dx_numm
 
     implicit none
 
@@ -92,8 +92,7 @@ subroutine fget_atomic_force_alphas_fchl(x1, forces, nneigh1, &
 
     double precision :: ang_norm2
 
-    double precision, parameter :: dx = 0.0005d0
-    double precision, parameter :: inv_2dx = 1.0d0 / (2.0d0 * dx)
+    double precision, parameter :: inv_2dx = 1.0d0 / (2.0d0 * dx_numm)
     double precision :: dx_sign
 
     integer :: maxneigh1
@@ -108,7 +107,7 @@ subroutine fget_atomic_force_alphas_fchl(x1, forces, nneigh1, &
         pmax1 = max(pmax1, int(maxval(x1(a,2,:nneigh1(a)))))
     enddo
 
-    inv_sigma2(:) = -1.0d0 / (sigmas(:))**2
+    inv_sigma2(:) = -0.5d0 / (sigmas(:))**2
 
     write (*,*) "DISPLACED REPS"
 
@@ -121,7 +120,7 @@ subroutine fget_atomic_force_alphas_fchl(x1, forces, nneigh1, &
     !$OMP PARALLEL DO
     do i = 1, na1
         x1_displaced(i, :, :, :, :) = &
-            & get_displaced_representaions(x1(i,:,:), nneigh1(i), dx, dim2, dim3)
+            & get_displaced_representaions(x1(i,:,:), nneigh1(i), dx_numm, dim2, dim3)
     enddo
     !$OMP END PARALLEL do
 
@@ -302,7 +301,7 @@ subroutine fget_atomic_force_kernels_fchl(x1, x2, nneigh1, nneigh2, &
        & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, kernels)
 
     use ffchl_module, only: scalar, get_threebody_fourier, get_twobody_weights, &
-                        & get_displaced_representaions, get_angular_norm2
+                        & get_displaced_representaions, get_angular_norm2, dx_numm
 
     implicit none
 
@@ -385,8 +384,7 @@ subroutine fget_atomic_force_kernels_fchl(x1, x2, nneigh1, nneigh2, &
 
     double precision :: ang_norm2
 
-    double precision, parameter :: dx = 0.0005d0
-    double precision, parameter :: inv_2dx = 1.0d0 / (2.0d0 * dx)
+    double precision, parameter :: inv_2dx = 1.0d0 / (2.0d0 * dx_numm)
     double precision :: dx_sign
 
     integer :: maxneigh1
@@ -413,7 +411,7 @@ subroutine fget_atomic_force_kernels_fchl(x1, x2, nneigh1, nneigh2, &
         pmax2 = max(pmax2, int(maxval(x2(a,2,:nneigh2(a)))))
     enddo
 
-    inv_sigma2(:) = -1.0d0 / (sigmas(:))**2
+    inv_sigma2(:) = -0.5d0 / (sigmas(:))**2
 
     write (*,*) "DISPLACED REPS"
 
@@ -426,7 +424,7 @@ subroutine fget_atomic_force_kernels_fchl(x1, x2, nneigh1, nneigh2, &
     !$OMP PARALLEL DO
     do i = 1, na2
         x2_displaced(i, :, :, :, :) = &
-            & get_displaced_representaions(x2(i,:,:), nneigh2(i), dx, dim2, dim3)
+            & get_displaced_representaions(x2(i,:,:), nneigh2(i), dx_numm, dim2, dim3)
     enddo
     !$OMP END PARALLEL do
 
@@ -485,15 +483,17 @@ subroutine fget_atomic_force_kernels_fchl(x1, x2, nneigh1, nneigh2, &
     fourier_displaced = 0.0d0
 
     write (*,*) "KERNEL DERIVATIVES"
-    do pm = 1, 2
+    do xyz = 1, 3
+        do pm = 1, 2
 
-        ! Get the sign and magnitude of displacement
-        dx_sign = ((dble(pm) - 1.5d0) * 2.0d0) * inv_2dx
+            ! Get the sign and magnitude of displacement
+            dx_sign = ((dble(pm) - 1.5d0) * 2.0d0) * inv_2dx
 
-        !$OMP PARALLEL DO schedule(dynamic), &
-        !$OMP& PRIVATE(l2dist,self_scalar2_displaced,ksi2_displaced,fourier_displaced)
-        do i = 1, na2
-           do xyz = 1, 3
+            write (*,*) "DERIVATIVE", xyz, nint(sign(1.0d0, dx_sign))
+
+            !$OMP PARALLEL DO schedule(dynamic), &
+            !$OMP& PRIVATE(l2dist,self_scalar2_displaced,ksi2_displaced,fourier_displaced)
+            do i = 1, na2
 
                 ksi2_displaced(:) = &
                     & get_twobody_weights(x2_displaced(i,:,:,xyz,pm), nneigh2(i), &
@@ -522,7 +522,6 @@ subroutine fget_atomic_force_kernels_fchl(x1, x2, nneigh1, nneigh2, &
                     l2dist = self_scalar2_displaced &
                         & + self_scalar1(j) - 2.0d0 * l2dist
 
-                    ! write (*,*) "l2 old", i,j,nneigh2(i), nneigh1(j), self_scalar2_displaced, self_scalar1(j), l2dist
                     do k = 1, nsigmas
                         kernels(k,xyz,i,j) = kernels(k,xyz,i,j) + &
                             & exp(l2dist * inv_sigma2(k)) * dx_sign
@@ -530,8 +529,8 @@ subroutine fget_atomic_force_kernels_fchl(x1, x2, nneigh1, nneigh2, &
 
                 enddo
             enddo
+            !$OMP END PARALLEL DO
         enddo
-        !$OMP END PARALLEL DO
     enddo
 
     deallocate(self_scalar1)
@@ -549,7 +548,7 @@ subroutine fget_scalar_vector_alphas_fchl(x1, forces, energies, nneigh1, &
        & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, alphas)
 
     use ffchl_module, only: scalar, get_threebody_fourier, get_twobody_weights, &
-                        & get_displaced_representaions, get_angular_norm2
+                        & get_displaced_representaions, get_angular_norm2, dx_numm
 
     use omp_lib, only: omp_get_wtime
 
@@ -617,6 +616,12 @@ subroutine fget_scalar_vector_alphas_fchl(x1, forces, energies, nneigh1, &
     ! integer :: ni, nj
     integer :: a! , b
 
+
+
+    double precision :: force_weight
+    double precision :: energy_weight
+    double precision, dimension(na1) :: energy_A
+
     ! Temporary variables necessary for parallelization
     double precision :: l2dist
     ! double precision, allocatable, dimension(:,:) :: atomic_distance
@@ -647,17 +652,13 @@ subroutine fget_scalar_vector_alphas_fchl(x1, forces, energies, nneigh1, &
 
     double precision :: ang_norm2
 
-    double precision, parameter :: dx = 0.0005d0
-    double precision, parameter :: inv_2dx = 1.0d0 / (2.0d0 * dx)
+    double precision, parameter :: inv_2dx = 1.0d0 / (2.0d0 * dx_numm)
     double precision :: dx_sign
 
     integer :: maxneigh1
 
     integer, dimension(nm1) :: istart, iend
-    double precision, dimension(na1) :: e
-    double precision, dimension(nm1) :: e_scratch
-    double precision, allocatable, dimension(:,:,:) :: kernel_molecular
-    double precision, allocatable, dimension(:,:) :: kernel_molecular_scratch
+    ! double precision, allocatable, dimension(:,:,:) :: kernel_molecular
     double precision, allocatable, dimension(:,:,:) :: kernel_MA
 
     double precision :: t_start, t_end
@@ -672,7 +673,7 @@ subroutine fget_scalar_vector_alphas_fchl(x1, forces, energies, nneigh1, &
         pmax1 = max(pmax1, int(maxval(x1(a,2,:nneigh1(a)))))
     enddo
 
-    inv_sigma2(:) = -1.0d0 / (sigmas(:))**2
+    inv_sigma2(:) = -0.5d0 / (sigmas(:))**2
 
     write (*,*) "DISPLACED REPS"
 
@@ -685,7 +686,7 @@ subroutine fget_scalar_vector_alphas_fchl(x1, forces, energies, nneigh1, &
     !$OMP PARALLEL DO
     do i = 1, na1
         x1_displaced(i, :, :, :, :) = &
-            & get_displaced_representaions(x1(i,:,:), nneigh1(i), dx, dim2, dim3)
+            & get_displaced_representaions(x1(i,:,:), nneigh1(i), dx_numm, dim2, dim3)
     enddo
     !$OMP END PARALLEL do
 
@@ -811,12 +812,11 @@ subroutine fget_scalar_vector_alphas_fchl(x1, forces, energies, nneigh1, &
         do k = 1, nsigmas
 
             write (*,"(A,F12.4)", advance="no") "     DSYRK()    sigma =", sigmas(k)
-
             t_start = omp_get_wtime()
             ! DSYRK call corresponds to: C := 1.0 *  K^T * K + 1.0 * C
             call dsyrk("U", "T", na1, na1, 1.0d0, kernel_delta(:,:,k), na1, &
                 & 1.0d0, kernel_scratch(:,:,k), na1)
-            
+
             t_end = omp_get_wtime()
 
             write (*,"(A,F12.4,A)") "     Time = ", t_end - t_start, " s"
@@ -846,6 +846,7 @@ subroutine fget_scalar_vector_alphas_fchl(x1, forces, energies, nneigh1, &
             l2dist = self_scalar1(i) + self_scalar1(j) - 2.0d0 * l2dist
 
             do k = 1, nsigmas
+                ! kernel_delta(i,j,k) = kernel_delta(i,j,k) + sqrt(l2dist + 0.1)
                 kernel_delta(i, j, k) =  exp(l2dist * inv_sigma2(k))
                 kernel_delta(j, i, k) =  kernel_delta(i, j, k)
             enddo
@@ -853,21 +854,26 @@ subroutine fget_scalar_vector_alphas_fchl(x1, forces, energies, nneigh1, &
     enddo
     !$OMP END PARALLEL DO
 
-
     istart(:) = 0
     iend(:) = 0
 
     istart(1) = 1
     iend(1) = n1(1)
+
+
+
     do i = 2, nm1
         istart(i) = istart(i-1) + n1(i)
         iend(i) = iend(i-1) + n1(i)
+
     enddo
 
-    ! do i = 1, nm1
-    !     e(istart(i):iend(i)) = energies(i) !/ n1(i)
-    ! enddo
-    
+    write (*,*) "HERE1"
+    do i = 1, nm1
+        energy_A(istart(i):iend(i)) = energies(i)! / n1(i)
+    enddo
+    write (*,*) "HERE1"
+
     deallocate(self_scalar1)
     deallocate(cosp1)
     deallocate(sinp1)
@@ -876,81 +882,67 @@ subroutine fget_scalar_vector_alphas_fchl(x1, forces, energies, nneigh1, &
     deallocate(fourier_displaced)
     deallocate(x1_displaced)
 
-    allocate(kernel_molecular(nm1,nm1,k))
-    allocate(kernel_molecular_scratch(nm1,nm1))
-    allocate(kernel_MA(nm1,na1,k))
+    write (*,*) "HERE1"
+    allocate(kernel_MA(nm1,na1,nsigmas))
 
-    kernel_molecular = 0.0d0
-
+    write (*,*) "HERE1"
     do k = 1, nsigmas
         do j = 1, nm1
-            ! do i = 1, nm1
-
-            !     l2dist = sum(kernel_delta(istart(i):iend(i), istart(j):iend(j), k)) &
-            !         &  / (n1(i) * n1(j))
-            !     kernel_molecular(i, j, k) = l2dist
-            !     kernel_molecular(j, i, k) = l2dist
-
-            !     ! write(*,*) i, j, istart(i), iend(i), istart(j), iend(j)
-            ! enddo
-            ! write(*,*) kernel_molecular(j,:6,k)
 
             do i = 1, na1
 
-                l2dist = sum(kernel_delta(i, istart(j):iend(j), k)) / n1(j)
-
+                l2dist = sum(kernel_delta(i, istart(j):iend(j), k))
                 kernel_MA(j, i, k) = l2dist
 
             enddo
         enddo
     enddo
-    
-    ! write(*,*) "Y"
-    ! write(*,*) y(:,1)
 
-    e(:nm1) = energies(:nm1) / n1(:nm1)
+    write (*,*) "HERE1"
+
+    ! write(*,*) "Y"
+    ! do k = 1, nsigmas
+    !     write(*,*) y(:5,k)
+    ! enddo
+
+    do k = 1, nsigmas
+        write (*,*) "Kernel", k, sigmas(k)
+        do i = 1, 10
+            write(*,*) kernel_delta(:10,i,k)
+        enddo
+    enddo
+
+    force_weight  = 1.0d0
+    energy_weight = 0.0d0
 
     do k = 1, nsigmas
 
-        kernel_molecular_scratch = 0.0d0
-        e_scratch = 0.0d0
+        kernel_scratch(:,:,k) = kernel_scratch(:,:,k) * force_weight + kernel_delta(:,:,k) * energy_weight
+        y(:,k) = 1.0d0 * y(:,k) * force_weight + energy_A(:) * energy_weight
 
-        ! DGEMM call corresponds to: C := 1.0 *  K^T * K + 1.0 * C
-        write (*,*) "    DGEMM", sigmas(k)
-        ! call dgemm("t", "n", nm1, nm1, nm1, 1.0d0, kernel_molecular(:,:,k), nm1, &
-        !     & kernel_molecular(:,:,k), nm1, 0.0d0, kernel_molecular_scratch(:,:), nm1)
-        call dgemm("t", "n", na1, na1, nm1, 1.0d0, kernel_MA(:,:,k), nm1, &
-            & kernel_MA(:,:,k), nm1, 1.0d0, kernel_scratch(:,:,k), na1)
+        ! write (*,*) "    DGEMM", sigmas(k)
 
-        ! do j = 1, nm1
-        !     do i = 1, nm1
-        !         kernel_scratch(istart(i):iend(i), istart(j):iend(j), k) &
-        !             & = kernel_scratch(istart(i):iend(i), istart(j):iend(j), k) &
-        !             & + kernel_molecular_scratch(i,j)
-        !     enddo
-        ! enddo
+        ! DGEMM call corresponds to: C := w_E*K^T*K + w_F*C
+        ! call dgemm("t", "n", na1, na1, nm1, energy_weight, kernel_MA(:,:,k), nm1, &
+        !   & kernel_MA(:,:,k), nm1, force_weight, kernel_scratch(:,:,k), na1)
 
-        write (*,*) "    DGEMV", sigmas(k)
-        ! DGEMV call corresponds to alphas := 1.0 * K^T * F + 1.0 * alphas
-        ! call dgemv("T", nm1, nm1, 1.0d0, kernel_molecular(:,:,k), nm1, &
-        !               & e(:), 1, 0.0d0, e_scratch(:), 1)
-        call dgemv("T", nm1, na1, 1.0d0, kernel_ma(:,:,k), nm1, &
-                        & energies(:), 1, 1.0d0, y(:,k), 1)
+        ! write (*,*) "    DGEMV", sigmas(k)
 
-        ! do i = 1, nm1
-        !     y(istart(i):iend(i),k) = y(istart(i):iend(i),k) + e_scratch(i)
-        ! enddo
+        ! ! DGEMV call corresponds to: Y := w_E*K^T*E  + w_F*Y
+        ! call dgemv("T", nm1, na1, energy_weight, kernel_ma(:,:,k), nm1, &
+        !               & energies(:), 1, force_weight, y(:,k), 1)
+
     enddo
 
     ! write(*,*) "Y"
-    ! write(*,*) y(:,1)
-
-    deallocate(kernel_molecular)
-    deallocate(kernel_molecular_scratch)
+    ! do k = 1, nsigmas
+    !     write(*,*) y(:5,k)
+    ! enddo
 
     deallocate(kernel_delta)
 
 
+    write(*,*) "LLAMBDA", lambda
 
     do k = 1, nsigmas
         do i = 1, na1

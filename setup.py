@@ -36,8 +36,8 @@ if any(["intelem" in arg for arg in sys.argv]):
 
 
 # UNCOMMENT TO FORCE LINKING TO MKL with GNU compilers:
-# LINKER_FLAGS = ["-lgomp", " -lpthread", "-lm", "-ldl"]
-# MATH_LINKER_FLAGS = ["-L${MKLROOT}/lib/intel64", "-lmkl_rt"]
+LINKER_FLAGS = ["-lgomp", " -lpthread", "-lm", "-ldl"]
+MATH_LINKER_FLAGS = ["-L${MKLROOT}/lib/intel64", "-lmkl_rt"]
 
 
 ext_ffchl_module = Extension(name = 'ffchl_module',

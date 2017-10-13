@@ -36,6 +36,35 @@ from .ffchl_module import fget_scalar_vector_alphas_fchl
 
 from .alchemy import get_alchemy
 
+def generate_displaced_fchl_representations(coordinates, nuclear_charges,
+                    size=23, neighbors=23, cut_distance = 5.0, cell=None, dx=0.0005):
+
+    if cell is None:
+        neighbors=size
+    
+    reps = np.zeros((3,2,size,size,5,neighbors))
+
+
+    for xyz in range(3):
+
+        for i in range(size):
+            for idisp, disp in enumerate([-dx, dx]):
+
+    
+                displaced_coordinates = copy.deepcopy(coordinates)
+
+                # print(i, xyz, displaced_coordinates[i,xyz], disp)
+                displaced_coordinates[i,xyz] += disp
+                # print(i, xyz, displaced_coordinates[i,xyz], disp)
+
+                rep = generate_fchl_representation(displaced_coordinates, nuclear_charges,
+                    size=size, neighbors=neighbors, cut_distance=cut_distance, cell=cell)
+
+                reps[xyz,idisp,i,:,:,:] = rep[:,:,:]
+
+    return reps
+
+
 def generate_fchl_representation(coordinates, nuclear_charges,
         size=23, neighbors=23, cut_distance = 5.0, cell=None):
     """ Generates a representation for the FCHL kernel module.
@@ -751,7 +780,7 @@ def get_scalar_vector_alphas_fchl(A, F, E, sigmas, llambda=1e-7, \
 
     X1 = np.zeros((na1, 5, neighbors_max))
     forces = np.zeros((na1, 3))
-    energies = np.zeros((na1)) 
+    # energies = np.zeros((na1)) 
     nneigh1 = np.zeros((na1))
 
     index = 0
@@ -760,12 +789,12 @@ def get_scalar_vector_alphas_fchl(A, F, E, sigmas, llambda=1e-7, \
 
             X1[index, :5, :neighbors_max] = A[a, i, :5, :neighbors_max] 
             forces[index,:3] = F[a][i][:3]
-            energies[index] = E[a]
+            # energies[index] = E[a]
             nneigh1[index] = neighbors1[a,i]
 
             index += 1
 
-    # print(X1.shape)
+    energies = np.array(E)
 
     return fget_scalar_vector_alphas_fchl(X1, forces, energies, nneigh1, sigmas, \
                 llambda, nm1, na1, N1, nsigmas, t_width, d_width, cut_start, cut_distance, order, pd, \
