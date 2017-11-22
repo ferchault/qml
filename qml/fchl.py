@@ -32,6 +32,10 @@ from .ffchl_module import fget_atomic_symmetric_kernels_fchl
 from .ffchl_module import fget_atomic_force_alphas_fchl
 from .ffchl_module import fget_atomic_force_kernels_fchl
 from .ffchl_module import fget_scalar_vector_alphas_fchl
+from .ffchl_module import fget_local_force_kernels_fchl
+from .ffchl_module import fget_local_symmetric_force_kernels_fchl
+from .ffchl_module import fget_local_gradient_kernels_fchl
+from .ffchl_module import fget_local_full_kernels_fchl
 # from .ffchl_module import fget_scalar_vector_kernels_fchl
 
 from .alchemy import get_alchemy
@@ -910,6 +914,276 @@ def get_scalar_vector_kernels_fchl(A, B, sigmas,
                 na1, na2, nsigmas, t_width, d_width, cut_start, cut_distance, order, pd, \
                 scale_distance, scale_angular, doalchemy, two_body_power, three_body_power)
 
-# def get_energy_fchl(Ks, alphas):
+def get_local_force_kernels_fchl(A, B, sigmas, dx = 0.0005,
+        t_width=np.pi/1.0, d_width=0.2, cut_start=1.0, cut_distance=5.0,
+        r_width=1.0, order=1, c_width=0.5, scale_distance=1.0, scale_angular=0.1,
+        n_width = 1.0, m_width = 1.0, l_width = 1.0, s_width = 1.0, alchemy="periodic-table",
+        two_body_power=6.0, three_body_power=3.0, elemental_vectors=None):
+
+    nm1 = A.shape[0]
+    nm2 = B.shape[0]
+
+    assert A.shape[1] == 3
+    assert A.shape[2] == 2
+    assert A.shape[5] == 5
+    assert B.shape[1] == 3
+    assert B.shape[2] == 2
+    assert B.shape[5] == 5
+
+    atoms_max = A.shape[4]
+    assert A.shape[3] == atoms_max
+    assert B.shape[3] == atoms_max
+
+    neighbors_max = A.shape[6]
+    assert B.shape[6] == neighbors_max
 
 
+    # N1 = np.zeros((nm1, 3, 2, atoms_max),dtype=np.int32)
+    # N2 = np.zeros((nm2, 3, 2, atoms_max),dtype=np.int32)
+
+    # for a in range(nm1):
+    #     for xyz in range(3):
+    #         for pm in range(2):
+    #             for i in range(atoms_max):
+    #                N1[a,xyz,pm,i] = len(np.where(A[a,xyz,pm,i,:,1,0] > 0.0001)[0])
+
+    # # for a in range(nm2):
+    # #    N2[a] = len(np.where(B[a,:,1,0] > 0.0001)[0])
+
+    # for a in range(nm2):
+    #     for xyz in range(3):
+    #         for pm in range(2):
+    #             for i in range(atoms_max):
+    #                N2[a,xyz,pm,i] = len(np.where(B[a,xyz,pm,i,:,1,0] > 0.0001)[0])
+
+    N1 = np.zeros((nm1),dtype=np.int32)
+    N2 = np.zeros((nm2),dtype=np.int32)
+
+    for a in range(nm1):
+        N1[a] = len(np.where(A[a,0,0,0,:,1,0] > 0.0001)[0])
+
+    for a in range(nm2):
+        N2[a] = len(np.where(B[a,0,0,0,:,1,0] > 0.0001)[0])
+
+    # for a in range(nm2):
+    #    N2[a] = len(np.where(B[a,:,1,0] > 0.0001)[0])
+
+    neighbors1 = np.zeros((nm1, 3, 2, atoms_max, atoms_max), dtype=np.int32)
+    neighbors2 = np.zeros((nm2, 3, 2, atoms_max, atoms_max), dtype=np.int32)
+
+    for m in range(nm1):
+        ni = N1[m]
+        for xyz in range(3):
+            for pm in range(2):
+                for i in range(ni):
+                    for a, x in enumerate(A[m,xyz,pm,i,:ni]):
+                        neighbors1[m,xyz,pm,i,a] = len(np.where(x[0]< cut_distance)[0])
+
+    for m in range(nm2):
+        ni = N2[m]
+        for xyz in range(3):
+            for pm in range(2):
+                for i in range(ni):
+                    for a, x in enumerate(B[m,xyz,pm,i,:ni]):
+                        neighbors2[m,xyz,pm,i,a] = len(np.where(x[0]< cut_distance)[0])
+
+    nsigmas = len(sigmas)
+
+    doalchemy, pd = get_alchemy(alchemy, emax=100, r_width=r_width, c_width=c_width, 
+        n_width = n_width, m_width = m_width, l_width = l_width, s_width = s_width,
+        elemental_vectors=elemental_vectors)
+
+    sigmas = np.array(sigmas)
+    assert len(sigmas.shape) == 1, "Third argument (sigmas) is not a 1D list/numpy.array!"
+
+    naq1 = np.sum(N1) * 3
+    naq2 = np.sum(N2) * 3
+
+    print naq1, naq2, nsigmas
+    return fget_local_force_kernels_fchl(A, B, N1, N2, neighbors1, neighbors2, sigmas, \
+        nm1, nm2, naq1, naq2, nsigmas, t_width, d_width, cut_start, cut_distance, \
+        order, pd, scale_distance, scale_angular, doalchemy, two_body_power, three_body_power, dx)
+
+    
+def get_local_symmetric_force_kernels_fchl(A, sigmas, dx = 0.0005,
+        t_width=np.pi/1.0, d_width=0.2, cut_start=1.0, cut_distance=5.0,
+        r_width=1.0, order=1, c_width=0.5, scale_distance=1.0, scale_angular=0.1,
+        n_width = 1.0, m_width = 1.0, l_width = 1.0, s_width = 1.0, alchemy="periodic-table",
+        two_body_power=6.0, three_body_power=3.0, elemental_vectors=None):
+
+    nm1 = A.shape[0]
+
+    assert A.shape[1] == 3
+    assert A.shape[2] == 2
+    assert A.shape[5] == 5
+
+    atoms_max = A.shape[4]
+    assert A.shape[3] == atoms_max
+
+    neighbors_max = A.shape[6]
+
+    N1 = np.zeros((nm1),dtype=np.int32)
+
+    for a in range(nm1):
+        N1[a] = len(np.where(A[a,0,0,0,:,1,0] > 0.0001)[0])
+
+    neighbors1 = np.zeros((nm1, 3, 2, atoms_max, atoms_max), dtype=np.int32)
+
+    for m in range(nm1):
+        ni = N1[m]
+        for xyz in range(3):
+            for pm in range(2):
+                for i in range(ni):
+                    for a, x in enumerate(A[m,xyz,pm,i,:ni]):
+                        neighbors1[m,xyz,pm,i,a] = len(np.where(x[0]< cut_distance)[0])
+
+    nsigmas = len(sigmas)
+
+    doalchemy, pd = get_alchemy(alchemy, emax=100, r_width=r_width, c_width=c_width, 
+        n_width = n_width, m_width = m_width, l_width = l_width, s_width = s_width,
+        elemental_vectors=elemental_vectors)
+
+    sigmas = np.array(sigmas)
+    assert len(sigmas.shape) == 1, "Third argument (sigmas) is not a 1D list/numpy.array!"
+
+    naq1 = np.sum(N1) * 3
+
+    print naq1, nsigmas
+    return fget_local_symmetric_force_kernels_fchl(A, N1, neighbors1, sigmas, \
+        nm1, naq1, nsigmas,  \
+        t_width, d_width, cut_start, cut_distance, \
+        order, pd, scale_distance, scale_angular, \
+        doalchemy, two_body_power, three_body_power, dx)
+
+    
+def get_local_gradient_kernels_fchl(A, B, sigmas, dx = 0.0005,
+        t_width=np.pi/1.0, d_width=0.2, cut_start=1.0, cut_distance=5.0,
+        r_width=1.0, order=1, c_width=0.5, scale_distance=1.0, scale_angular=0.1,
+        n_width = 1.0, m_width = 1.0, l_width = 1.0, s_width = 1.0, alchemy="periodic-table",
+        two_body_power=6.0, three_body_power=3.0, elemental_vectors=None):
+
+    nm1 = A.shape[0]
+    nm2 = B.shape[0]
+
+    assert B.shape[1] == 3
+    assert B.shape[2] == 2
+    assert B.shape[5] == 5
+    assert A.shape[2] == 5
+    # assert B.shape[2] == 2
+    # assert B.shape[5] == 5
+
+    atoms_max = B.shape[4]
+    assert A.shape[1] == atoms_max
+    assert B.shape[3] == atoms_max
+
+    neighbors_max = B.shape[6]
+    assert A.shape[3] == neighbors_max
+
+
+    N1 = np.zeros((nm1),dtype=np.int32)
+
+    for a in range(nm1):
+        N1[a] = len(np.where(A[a,:,1,0] > 0.0001)[0])
+
+    neighbors1 = np.zeros((nm1, atoms_max), dtype=np.int32)
+
+    for a, representation in enumerate(A):
+        ni = N1[a]
+        for i, x in enumerate(representation[:ni]):
+            neighbors1[a,i] = len(np.where(x[0]< cut_distance)[0])
+
+    N2 = np.zeros((nm2),dtype=np.int32)
+
+    for a in range(nm2):
+        N2[a] = len(np.where(B[a,0,0,0,:,1,0] > 0.0001)[0])
+
+    neighbors2 = np.zeros((nm2, 3, 2, atoms_max, atoms_max), dtype=np.int32)
+
+    for m in range(nm2):
+        ni = N2[m]
+        for xyz in range(3):
+            for pm in range(2):
+                for i in range(ni):
+                    for a, x in enumerate(B[m,xyz,pm,i,:ni]):
+                        neighbors2[m,xyz,pm,i,a] = len(np.where(x[0]< cut_distance)[0])
+
+    nsigmas = len(sigmas)
+
+    doalchemy, pd = get_alchemy(alchemy, emax=100, r_width=r_width, c_width=c_width, 
+        n_width = n_width, m_width = m_width, l_width = l_width, s_width = s_width,
+        elemental_vectors=elemental_vectors)
+
+    sigmas = np.array(sigmas)
+    assert len(sigmas.shape) == 1, "Third argument (sigmas) is not a 1D list/numpy.array!"
+
+    naq2 = np.sum(N2) * 3
+
+    return fget_local_gradient_kernels_fchl(A, B, N1, N2, neighbors1, neighbors2, sigmas, \
+        nm1, nm2, naq2, nsigmas, t_width, d_width, cut_start, cut_distance, \
+        order, pd, scale_distance, scale_angular, doalchemy, two_body_power, three_body_power, dx)
+
+def get_local_full_kernels_fchl(A, B, sigmas, dx = 0.0005,
+        t_width=np.pi/1.0, d_width=0.2, cut_start=1.0, cut_distance=5.0,
+        r_width=1.0, order=1, c_width=0.5, scale_distance=1.0, scale_angular=0.1,
+        n_width = 1.0, m_width = 1.0, l_width = 1.0, s_width = 1.0, alchemy="periodic-table",
+        two_body_power=6.0, three_body_power=3.0, elemental_vectors=None):
+
+    nm1 = A.shape[0]
+    nm2 = B.shape[0]
+
+    assert B.shape[1] == 3
+    assert B.shape[2] == 2
+    assert B.shape[5] == 5
+    assert A.shape[2] == 5
+    # assert B.shape[2] == 2
+    # assert B.shape[5] == 5
+
+    atoms_max = B.shape[4]
+    assert A.shape[1] == atoms_max
+    assert B.shape[3] == atoms_max
+
+    neighbors_max = B.shape[6]
+    assert A.shape[3] == neighbors_max
+
+
+    N1 = np.zeros((nm1),dtype=np.int32)
+
+    for a in range(nm1):
+        N1[a] = len(np.where(A[a,:,1,0] > 0.0001)[0])
+
+    neighbors1 = np.zeros((nm1, atoms_max), dtype=np.int32)
+
+    for a, representation in enumerate(A):
+        ni = N1[a]
+        for i, x in enumerate(representation[:ni]):
+            neighbors1[a,i] = len(np.where(x[0]< cut_distance)[0])
+
+    N2 = np.zeros((nm2),dtype=np.int32)
+
+    for a in range(nm2):
+        N2[a] = len(np.where(B[a,0,0,0,:,1,0] > 0.0001)[0])
+
+    neighbors2 = np.zeros((nm2, 3, 2, atoms_max, atoms_max), dtype=np.int32)
+
+    for m in range(nm2):
+        ni = N2[m]
+        for xyz in range(3):
+            for pm in range(2):
+                for i in range(ni):
+                    for a, x in enumerate(B[m,xyz,pm,i,:ni]):
+                        neighbors2[m,xyz,pm,i,a] = len(np.where(x[0]< cut_distance)[0])
+
+    nsigmas = len(sigmas)
+
+    doalchemy, pd = get_alchemy(alchemy, emax=100, r_width=r_width, c_width=c_width, 
+        n_width = n_width, m_width = m_width, l_width = l_width, s_width = s_width,
+        elemental_vectors=elemental_vectors)
+
+    sigmas = np.array(sigmas)
+    assert len(sigmas.shape) == 1, "Third argument (sigmas) is not a 1D list/numpy.array!"
+
+    naq2 = np.sum(N2) * 3
+
+    return fget_local_full_kernels_fchl(A, B, N1, N2, neighbors1, neighbors2, sigmas, \
+        nm1, nm2, naq2, nsigmas, t_width, d_width, cut_start, cut_distance, \
+        order, pd, scale_distance, scale_angular, doalchemy, two_body_power, three_body_power, dx)
