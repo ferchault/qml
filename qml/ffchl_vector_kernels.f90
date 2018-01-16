@@ -1828,18 +1828,14 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
     integer :: maxneigh2
     
     double precision, allocatable, dimension(:,:) :: y
-    !DEC$ attributes align: 64:: y
     
     double precision, allocatable, dimension(:,:,:)  :: kernel_delta
-    !DEC$ attributes align: 64:: kernel_delta
 
     double precision, allocatable, dimension(:,:,:)  :: kernel_scratch
-    !DEC$ attributes align: 64:: kernel_scratch
     
-    ! double precision :: t_start, t_end
+    double precision :: t_start, t_end
     
     double precision, allocatable, dimension(:,:,:) :: kernel_ma
-    !DEC$ attributes align: 64:: kernel_ma
 
     inv_2dx = 1.0d0 / (2.0d0 * dx)
     ang_norm2 = get_angular_norm2(t_width)
@@ -2062,29 +2058,29 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
         
         do k = 1, nsigmas
 
-            ! write (*,"(A,F12.4)", advance="no") "     DSYRK()    sigma =", sigmas(k)
-            !t_start = omp_get_wtime()
-            ! write(*,*) kernel_delta(:3,:3,k)            
-            ! call dsyrk("U", "N", na1, na1, 1.0d0, kernel_delta(1,1,k), na1, &
-            !     & 1.0d0, kernel_scratch(1,1,k), na1)
+            write (*,"(A,F12.4)", advance="no") "     DSYRK()    sigma =", sigmas(k)
+            t_start = omp_get_wtime()
+            write(*,*) kernel_delta(:3,:3,k)            
+            call dsyrk("U", "N", na1, na1, 1.0d0, kernel_delta(1,1,k), na1, &
+                & 1.0d0, kernel_scratch(1,1,k), na1)
 
-            kernel_scratch(:,:,k) = kernel_scratch(:,:,k) &
-               & + matmul(kernel_delta(:,:,k),transpose(kernel_delta(:,:,k)))! * inv_2dx*inv_2dx
+            ! kernel_scratch(:,:,k) = kernel_scratch(:,:,k) &
+            !    & + matmul(kernel_delta(:,:,k),transpose(kernel_delta(:,:,k)))! * inv_2dx*inv_2dx
 
-            !t_end = omp_get_wtime()
-            !write (*,"(A,F12.4,A)") "     Time = ", t_end - t_start, " s"
+            t_end = omp_get_wtime()
+            write (*,"(A,F12.4,A)") "     Time = ", t_end - t_start, " s"
 
 
 
-            !write (*,"(A,F12.4)", advance="no") "     DGEMV()    sigma =", sigmas(k)
-            !t_start = omp_get_wtime()
+            write (*,"(A,F12.4)", advance="no") "     DGEMV()    sigma =", sigmas(k)
+            t_start = omp_get_wtime()
             
-            !call dgemv("N", na1, na1, inv_2dx, kernel_delta(:,:,k), na1, &
-            !    & forces(:,xyz2), 1, 1.0d0, y(:,k), 1)
-            y(:,k) = y(:,k) + matmul(kernel_delta(:,:,k), forces(:,xyz2))!* inv_2dx
+            call dgemv("N", na1, na1, inv_2dx, kernel_delta(:,:,k), na1, &
+                & forces(:,xyz2), 1, 1.0d0, y(:,k), 1)
+            ! y(:,k) = y(:,k) + matmul(kernel_delta(:,:,k), forces(:,xyz2))!* inv_2dx
 
-            !t_end = omp_get_wtime()
-            !write (*,"(A,F12.4,A)") "     Time = ", t_end - t_start, " s"
+            t_end = omp_get_wtime()
+            write (*,"(A,F12.4,A)") "     Time = ", t_end - t_start, " s"
 
         enddo
 
@@ -2140,18 +2136,18 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
  
     do k = 1, nsigmas
         
-        kernel_scratch(:,:,k) = kernel_scratch(:,:,k) &
-           & + matmul(transpose(kernel_MA(:,:,k)),kernel_MA(:,:,k))
+        ! kernel_scratch(:,:,k) = kernel_scratch(:,:,k) &
+        !    & + matmul(transpose(kernel_MA(:,:,k)),kernel_MA(:,:,k))
  
-        y(:,k) = y(:,k) + matmul(transpose(kernel_MA(:,:,k)), energies(:))
+        ! y(:,k) = y(:,k) + matmul(transpose(kernel_MA(:,:,k)), energies(:))
  
-        ! ! DGEMM call corresponds to: C := w_E*K^T*K + w_F*C
-        ! call dsyrk("U", "T", na1, nm1, 1.0d0, kernel_MA(:,:,k), nm1, &
-        !     & 1.0d0, kernel_scratch(:,:,k), na1)
+        ! DGEMM call corresponds to: C := w_E*K^T*K + w_F*C
+        call dsyrk("U", "T", na1, nm1, 1.0d0, kernel_MA(:,:,k), nm1, &
+            & 1.0d0, kernel_scratch(:,:,k), na1)
  
-        ! ! DGEMV call corresponds to: Y := w_E*K^T*E  + w_F*Y
-        ! call dgemv("T", nm1, na1, 1.0d0, kernel_ma(:,:,k), nm1, &
-        !               & energies(:), 1, 1.0d0, y(:,k), 1)
+        ! DGEMV call corresponds to: Y := w_E*K^T*E  + w_F*Y
+        call dgemv("T", nm1, na1, 1.0d0, kernel_ma(:,:,k), nm1, &
+                      & energies(:), 1, 1.0d0, y(:,k), 1)
  
     enddo
 
