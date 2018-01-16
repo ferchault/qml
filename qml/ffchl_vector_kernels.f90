@@ -2060,9 +2060,9 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
 
             write (*,"(A,F12.4)", advance="no") "     DSYRK()    sigma =", sigmas(k)
             t_start = omp_get_wtime()
-            write(*,*) kernel_delta(:3,:3,k)            
+            ! write(*,*) kernel_delta(:3,:3,k)            
             call dsyrk("U", "N", na1, na1, 1.0d0, kernel_delta(1,1,k), na1, &
-                & 1.0d0, kernel_scratch(1,1,k), na1)
+               & 1.0d0, kernel_scratch(1,1,k), na1)
 
             ! kernel_scratch(:,:,k) = kernel_scratch(:,:,k) &
             !    & + matmul(kernel_delta(:,:,k),transpose(kernel_delta(:,:,k)))! * inv_2dx*inv_2dx
@@ -2075,8 +2075,9 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
             write (*,"(A,F12.4)", advance="no") "     DGEMV()    sigma =", sigmas(k)
             t_start = omp_get_wtime()
             
-            call dgemv("N", na1, na1, inv_2dx, kernel_delta(:,:,k), na1, &
+            call dgemv("N", na1, na1, 1.0d0, kernel_delta(:,:,k), na1, &
                 & forces(:,xyz2), 1, 1.0d0, y(:,k), 1)
+            
             ! y(:,k) = y(:,k) + matmul(kernel_delta(:,:,k), forces(:,xyz2))!* inv_2dx
 
             t_end = omp_get_wtime()
