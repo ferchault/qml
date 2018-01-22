@@ -1715,7 +1715,8 @@ end subroutine fget_atomic_gradient_kernels_fchl
 subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
         & nneigh1, nneigh2, sigmas, nm1, nm2, na1, nsigmas, &
         & t_width, d_width, cut_start, cut_distance, order, pd, &
-        & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, dx, alphas)
+        & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, dx, &
+        & llambda, alphas)
 
     use ffchl_module, only: scalar, get_threebody_fourier, get_twobody_weights, &
                         & get_displaced_representaions, get_angular_norm2
@@ -1739,6 +1740,9 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
 
     ! Sigma in the Gaussian kernel
     double precision, dimension(:), intent(in) :: sigmas
+
+    ! Regularization Lambda
+    double precision, intent(in) :: llambda
 
     ! Number of molecules
     integer, intent(in) :: nm1
@@ -1849,7 +1853,9 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
     pmax1 = 10
     pmax2 = 10
 
-    write (*,*) "KSI2 1"!, nm1,maxval(n1),maxneigh1
+    write (*,"(A)", advance="no") "TWO-BODY TERMS"
+    t_start = omp_get_wtime()
+
     allocate(ksi1(nm1, maxval(n1), maxneigh1))
     ksi1 = 0.0d0
 
@@ -1863,8 +1869,12 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
     enddo
     !$OMP END PARALLEL do
 
+    t_end = omp_get_wtime()
+    write (*,"(A,F12.4,A)") "                          Time = ", t_end - t_start, " s"
 
-    write (*,*) "KSI2 2"!,nm2,3,2,maxval(n2),maxval(n2),maxneigh2
+    write (*,"(A)", advance="no") "TWO-BODY GRADIENT"
+    t_start = omp_get_wtime()
+
     allocate(ksi2(nm2,3,2,maxval(n2),maxval(n2),maxneigh2))
     ksi2 = 0.0d0
 
@@ -1885,8 +1895,11 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
     enddo
     !$OMP END PARALLEL do
     
-    write (*,*) "KSI3 1"!, &
-        ! & nm1, 3*2, maxval(n1), maxval(n1), pmax1, order, maxval(nneigh1)
+    t_end = omp_get_wtime()
+    write (*,"(A,F12.4,A)") "                       Time = ", t_end - t_start, " s"
+
+    write (*,"(A)", advance="no") "THREE-BODY TERMS"
+    t_start = omp_get_wtime()
     
     allocate(cosp1(nm1, maxval(n1), pmax1, order, maxval(nneigh1)))
     allocate(sinp1(nm1, maxval(n1), pmax1, order, maxval(nneigh1)))
@@ -1908,9 +1921,12 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
     enddo
     !$OMP END PARALLEL DO
 
+    t_end = omp_get_wtime()
+    write (*,"(A,F12.4,A)") "                        Time = ", t_end - t_start, " s"
+
+    write (*,"(A)", advance="no") "THREE-BODY GRADIENT"
+    t_start = omp_get_wtime()
     
-    write (*,*) "KSI3 2"!, &
-        !& nm1, 3*2, maxval(n1), maxval(n1), pmax1, order, maxval(nneigh1)
     allocate(cosp2(nm2, 3*2, maxval(n2), maxval(n2), pmax2, order, maxval(nneigh2)))
     allocate(sinp2(nm2, 3*2, maxval(n2), maxval(n2), pmax2, order, maxval(nneigh2)))
     cosp2 = 0.0d0
@@ -1941,7 +1957,12 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
     enddo
     !$OMP END PARALLEL do
     
-    write (*,*) "SELF SCALAR 1"
+    t_end = omp_get_wtime()
+    write (*,"(A,F12.4,A)") "                     Time = ", t_end - t_start, " s"
+    
+    write (*,"(A)", advance="no") "SELF-SCALAR TERMS"
+    t_start = omp_get_wtime()
+
     allocate(self_scalar1(nm1, maxval(n1)))
     self_scalar1 = 0.0d0
 
@@ -1958,8 +1979,13 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
         enddo
     enddo
     !$OMP END PARALLEL DO
+    
+    t_end = omp_get_wtime()
+    write (*,"(A,F12.4,A)") "                       Time = ", t_end - t_start, " s"
 
-    write (*,*) "SELF SCALAR 2"
+    write (*,"(A)", advance="no") "SELF-SCALAR GRADIENT"
+    t_start = omp_get_wtime()
+    
     allocate(self_scalar2(nm2, 3, 2, maxval(n2), maxval(n2)))
     self_scalar2 = 0.0d0
 
@@ -1986,9 +2012,11 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
         enddo
     enddo
     !$OMP END PARALLEL do
+    
+    t_end = omp_get_wtime()
+    write (*,"(A,F12.4,A)") "                    Time = ", t_end - t_start, " s"
 
     allocate(kernel_delta(na1,na1,nsigmas))
-
     allocate(y(na1,nsigmas))
     y = 0.0d0
 
@@ -1997,7 +2025,9 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
 
     do xyz2 = 1, 3
         
-        write (*,*) "KERNEL GRADIENT", xyz2, "/ 3"
+        write (*,"(A,I3,A)", advance="no") "KERNEL GRADIENT", xyz2, " / 3"
+        t_start = omp_get_wtime()
+        
         kernel_delta = 0.0d0
 
         !$OMP PARALLEL DO schedule(dynamic) PRIVATE(na,nb,xyz_pm2,l2dist), &
@@ -2056,11 +2086,14 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
         enddo
         !$OMP END PARALLEL do
         
+        t_end = omp_get_wtime()
+        write (*,"(A,F12.4,A)") "                  Time = ", t_end - t_start, " s"
+
         do k = 1, nsigmas
 
             write (*,"(A,F12.4)", advance="no") "     DSYRK()    sigma =", sigmas(k)
             t_start = omp_get_wtime()
-            ! write(*,*) kernel_delta(:3,:3,k)            
+            
             call dsyrk("U", "N", na1, na1, 1.0d0, kernel_delta(1,1,k), na1, &
                & 1.0d0, kernel_scratch(1,1,k), na1)
 
@@ -2069,8 +2102,6 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
 
             t_end = omp_get_wtime()
             write (*,"(A,F12.4,A)") "     Time = ", t_end - t_start, " s"
-
-
 
             write (*,"(A,F12.4)", advance="no") "     DGEMV()    sigma =", sigmas(k)
             t_start = omp_get_wtime()
@@ -2096,7 +2127,8 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
     allocate(kernel_MA(nm1,na1,nsigmas))
     kernel_MA = 0.0d0
  
-    write (*,*) "KERNEL"
+    write (*,"(A)", advance="no") "KERNEL"
+
     !$OMP PARALLEL DO schedule(dynamic) PRIVATE(ni,nj,idx1,l2dist,idx1_start)
     do a = 1, nm1
         ni = n1(a)
@@ -2130,6 +2162,9 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
     enddo
     !$OMP END PARALLEL DO
     
+    t_end = omp_get_wtime()
+    write (*,"(A,F12.4,A)") "                                  Time = ", t_end - t_start, " s"
+    
     deallocate(self_scalar1)
     deallocate(ksi1)
     deallocate(cosp1)
@@ -2141,31 +2176,43 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
         !    & + matmul(transpose(kernel_MA(:,:,k)),kernel_MA(:,:,k))
  
         ! y(:,k) = y(:,k) + matmul(transpose(kernel_MA(:,:,k)), energies(:))
- 
-        ! DGEMM call corresponds to: C := w_E*K^T*K + w_F*C
+
+        write (*,"(A,F12.4)", advance="no") "     DSYRK()    sigma =", sigmas(k)
+        t_start = omp_get_wtime()
+
         call dsyrk("U", "T", na1, nm1, 1.0d0, kernel_MA(:,:,k), nm1, &
             & 1.0d0, kernel_scratch(:,:,k), na1)
+
+        t_end = omp_get_wtime()
+        write (*,"(A,F12.4,A)") "     Time = ", t_end - t_start, " s"
  
-        ! DGEMV call corresponds to: Y := w_E*K^T*E  + w_F*Y
+        write (*,"(A,F12.4)", advance="no") "     DGEMV()    sigma =", sigmas(k)
+        t_start = omp_get_wtime()
+            
         call dgemv("T", nm1, na1, 1.0d0, kernel_ma(:,:,k), nm1, &
                       & energies(:), 1, 1.0d0, y(:,k), 1)
+
+        t_end = omp_get_wtime()
+        write (*,"(A,F12.4,A)") "     Time = ", t_end - t_start, " s"
  
     enddo
 
     deallocate(kernel_ma)
 
-    ! Solve
     do k = 1, nsigmas
         do i = 1, na1
-            kernel_scratch(i,i,k) = kernel_scratch(i,i,k) + 1d-8
+            kernel_scratch(i,i,k) = kernel_scratch(i,i,k) + llambda
         enddo
     enddo
 
     alphas = 0.0d0
 
+    write (*,"(A)") "CHOLESKY DECOMPOSITION"
     do k = 1, nsigmas
-        write (*,*) "  CHOLESKY", k, " sigma = ", sigmas(k)
-        ! write (*,*) "  DPOTRF", k, " sigma = ", sigmas(k)
+
+        write (*,"(A,F12.4)", advance="no") "     DPOTRF()   sigma =", sigmas(k)
+        t_start = omp_get_wtime()
+
         call dpotrf("U", na1, kernel_scratch(:,:,k), na1, info)
         if (info > 0) then
             write (*,*) "QML WARNING: Error in LAPACK Cholesky decomposition DPOTRF()."
@@ -2175,12 +2222,20 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
             write (*,*) "QML WARNING: The", -info, "-th argument had an illegal value."
         endif
 
-        ! write (*,*) "  DPOTRS"
+        t_end = omp_get_wtime()
+        write (*,"(A,F12.4,A)") "     Time = ", t_end - t_start, " s"
+
+        write (*,"(A,F12.4)", advance="no") "     DPOTRS()   sigma =", sigmas(k)
+        t_start = omp_get_wtime()
+
         call dpotrs("U", na1, 1, kernel_scratch(:,:,k), na1, y(:,k), na1, info)
         if (info < 0) then
             write (*,*) "QML WARNING: Error in LAPACK Cholesky solver DPOTRS()."
             write (*,*) "QML WARNING: The", -info, "-th argument had an illegal value."
         endif
+
+        t_end = omp_get_wtime()
+        write (*,"(A,F12.4,A)") "     Time = ", t_end - t_start, " s"
 
         alphas(k,:) = y(:,k)
     enddo

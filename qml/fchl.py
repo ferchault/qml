@@ -1200,7 +1200,7 @@ def get_local_full_kernels_fchl(A, B, sigmas, dx = 0.0005,
 
     
 def get_local_invariant_alphas_fchl(A, B, F, sigmas, energy=None, dx=0.0005,
-        t_width=np.pi/1.0, d_width=0.2, cut_start=1.0, cut_distance=5.0,
+        t_width=np.pi/1.0, d_width=0.2, cut_start=1.0, cut_distance=5.0, regularization=1e-8,
         r_width=1.0, order=1, c_width=0.5, scale_distance=1.0, scale_angular=0.1,
         n_width = 1.0, m_width = 1.0, l_width = 1.0, s_width = 1.0, alchemy="periodic-table",
         two_body_power=6.0, three_body_power=3.0, elemental_vectors=None):
@@ -1268,7 +1268,7 @@ def get_local_invariant_alphas_fchl(A, B, F, sigmas, energy=None, dx=0.0005,
 
     return fget_local_invariant_alphas_fchl(A, B, F, E, N1, N2, neighbors1, neighbors2, sigmas, \
         nm1, nm2, na1, nsigmas, t_width, d_width, cut_start, cut_distance, \
-        order, pd, scale_distance, scale_angular, doalchemy, two_body_power, three_body_power, dx)
+        order, pd, scale_distance, scale_angular, doalchemy, two_body_power, three_body_power, dx, regularization)
 
 def get_atomic_gradient_kernels_fchl(A, B, sigmas, dx = 0.0005,
         t_width=np.pi/1.0, d_width=0.2, cut_start=1.0, cut_distance=5.0,
