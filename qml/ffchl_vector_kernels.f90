@@ -116,8 +116,39 @@ subroutine fget_local_hessian_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
     maxneigh1 = maxval(nneigh1)
     maxneigh2 = maxval(nneigh2)
 
-    pmax1 = 10
-    pmax2 = 10
+    pmax1 = 0 
+
+    do a = 1, nm1
+        na = n1(a)
+        do xyz = 1, 3
+            do pm = 1, 2
+                do i = 1, na
+                    do j = 1, na
+            pmax1 = max(pmax1, int(maxval(x1(a,xyz,pm,i,j,2,:nneigh1(a, xyz, pm, i, j)))))
+                    end do
+                end do
+            end do
+        end do
+    end do
+
+    write (*,*) "PMAX =", pmax1
+
+    pmax2 = 0 
+
+    do a = 1, nm2
+        na = n2(a)
+        do xyz = 1, 3
+            do pm = 1, 2
+                do i = 1, na
+                    do j = 1, na
+            pmax2 = max(pmax2, int(maxval(x2(a,xyz,pm,i,j,2,:nneigh2(a, xyz, pm, i, j)))))
+                    end do
+                end do
+            end do
+        end do
+    end do
+
+    write (*,*) "PMAX =", pmax2
 
     write (*,*) "KSI1", nm1,3,2,maxval(n1),maxval(n1),maxneigh1
     allocate(ksi1(nm1,3,2,maxval(n1),maxval(n1),maxneigh1))
@@ -456,7 +487,22 @@ subroutine fget_local_symmetric_hessian_kernels_fchl(x1, n1, nneigh1, &
 
     maxneigh1 = maxval(nneigh1)
 
-    pmax1 = 10
+    pmax1 = 0 
+
+    do a = 1, nm1
+        na = n1(a)
+        do xyz = 1, 3
+            do pm = 1, 2
+                do i = 1, na
+                    do j = 1, na
+            pmax1 = max(pmax1, int(maxval(x1(a,xyz,pm,i,j,2,:nneigh1(a, xyz, pm, i, j)))))
+                    end do
+                end do
+            end do
+        end do
+    end do
+
+    write (*,*) "PMAX =", pmax1
 
     write (*,*) "KSI1", nm1,3,2,maxval(n1),maxval(n1),maxneigh1
     allocate(ksi1(nm1,3,2,maxval(n1),maxval(n1),maxneigh1))
@@ -732,8 +778,27 @@ subroutine fget_local_gradient_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
     maxneigh1 = maxval(nneigh1)
     maxneigh2 = maxval(nneigh2)
 
-    pmax1 = 10
-    pmax2 = 10
+    pmax1 = 0
+    pmax2 = 0
+
+    do a = 1, nm1
+        ni = n1(a)
+        do i = 1, ni
+            pmax1 = max(pmax1, int(maxval(x1(a,i,2,:nneigh1(a,i)))))
+        end do
+    end do
+    do a = 1, nm2
+        na = n2(a)
+        do xyz = 1, 3
+            do pm = 1, 2
+                do i = 1, na
+                    do j = 1, na
+            pmax2 = max(pmax2, int(maxval(x2(a,xyz,pm,i,j,2,:nneigh2(a, xyz, pm, i, j)))))
+                    end do
+                end do
+            end do
+        end do
+    end do
 
     write (*,*) "KSI1", nm1,maxval(n1),maxneigh1
     allocate(ksi1(nm1, maxval(n1), maxneigh1))
@@ -1056,8 +1121,26 @@ subroutine fget_local_full_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
     maxneigh1 = maxval(nneigh1)
     maxneigh2 = maxval(nneigh2)
 
-    pmax1 = 10
-    pmax2 = 10
+    pmax1 = 0
+    pmax2 = 0
+    do a = 1, nm1
+        ni = n1(a)
+        do i = 1, ni
+            pmax1 = max(pmax1, int(maxval(x1(a,i,2,:nneigh1(a,i)))))
+        end do
+    end do
+    do a = 1, nm2
+        na = n2(a)
+        do xyz = 1, 3
+            do pm = 1, 2
+                do i = 1, na
+                    do j = 1, na
+            pmax2 = max(pmax2, int(maxval(x2(a,xyz,pm,i,j,2,:nneigh2(a, xyz, pm, i, j)))))
+                    end do
+                end do
+            end do
+        end do
+    end do
 
     write (*,*) "KSI1", nm1,maxval(n1),maxneigh1
     allocate(ksi1(nm1, maxval(n1), maxneigh1))
@@ -1493,8 +1576,26 @@ subroutine fget_atomic_gradient_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
     maxneigh1 = maxval(nneigh1)
     maxneigh2 = maxval(nneigh2)
 
-    pmax1 = 10
-    pmax2 = 10
+    pmax1 = 0
+    pmax2 = 0
+    do a = 1, nm1
+        ni = n1(a)
+        do i = 1, ni
+            pmax1 = max(pmax1, int(maxval(x1(a,i,2,:nneigh1(a,i)))))
+        end do
+    end do
+    do a = 1, nm2
+        na = n2(a)
+        do xyz = 1, 3
+            do pm = 1, 2
+                do i = 1, na
+                    do j = 1, na
+            pmax2 = max(pmax2, int(maxval(x2(a,xyz,pm,i,j,2,:nneigh2(a, xyz, pm, i, j)))))
+                    end do
+                end do
+            end do
+        end do
+    end do
 
     ! write (*,*) "KSI2 1"!, nm1,maxval(n1),maxneigh1
     allocate(ksi1(nm1, maxval(n1), maxneigh1))
@@ -1850,8 +1951,15 @@ subroutine fget_local_invariant_alphas_fchl(x1, x2, forces, energies, n1, n2, &
     maxneigh1 = maxval(nneigh1)
     maxneigh2 = maxval(nneigh2)
 
-    pmax1 = 10
-    pmax2 = 10
+    pmax1 = 0
+    do a = 1, nm1
+        ni = n1(a)
+        do i = 1, ni
+            pmax1 = max(pmax1, int(maxval(x1(a,i,2,:nneigh1(a,i)))))
+        end do
+    end do
+
+    pmax2 = pmax1
 
     write (*,"(A)", advance="no") "TWO-BODY TERMS"
     t_start = omp_get_wtime()
