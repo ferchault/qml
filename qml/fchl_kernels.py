@@ -26,6 +26,9 @@ from __future__ import print_function
 import numpy as np
 from copy import copy
 
+import scipy
+from scipy.special import binom
+from scipy.misc import factorial
 
 def get_gaussian_parameters(tags):
 
@@ -174,6 +177,34 @@ def get_l2_parameters(tags):
 
     return 8, parameters, n_kernels
 
+
+def get_matern_parameters(tags):
+
+    if tags is None:
+        tags = {
+            "sigma": [10.0],
+            "n": [2.0],
+
+        }
+
+    assert len(tags["sigma"]) == len(tags["n"])
+    n_kernels = len(tags["sigma"])
+
+    n_max = int(max(tags["n"])) + 1
+
+    parameters = np.zeros((2+n_max, n_kernels))
+
+    for i in range(n_kernels):
+        parameters[0,i] = tags["sigma"][i]
+        parameters[1,i] = tags["n"][i]
+
+        n = int(tags["n"][i])
+        for k in range(0, n+1):
+            parameters[2+k,i] = factorial(n + k) / factorial(2*n) * binom(n, k)
+
+
+    return 9, parameters, n_kernels
+
 def get_kernel_parameters(name, tags):
 
     parameters = None
@@ -203,6 +234,9 @@ def get_kernel_parameters(name, tags):
     
     elif name == "l2":
         idx, parameters, n_kernels = get_l2_parameters(tags)
+
+    elif name == "matern":
+        idx, parameters, n_kernels = get_matern_parameters(tags)
 
     else:
 
