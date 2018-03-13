@@ -818,7 +818,7 @@ def test_fchl_bessel():
     assert np.allclose(K, K_test), "Error in FCHL inverse bessel kernels"
 
 
-def test_fchl_bessel():
+def test_fchl_l2():
 
     test_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -857,7 +857,7 @@ def test_fchl_bessel():
     v = 3
     n = 2
 
-    inv_sigma = 1.0/ (2.0*2.5**2)
+    inv_sigma = -1.0/ (2.0*2.5**2)
 
     for i, Xi in enumerate(X):
         for j, Xj in enumerate(X):
@@ -869,20 +869,25 @@ def test_fchl_bessel():
                 for jj in range(Sij.shape[1]):
 
 
-                    K_test[i,j] += np.exp(-Sij[ii,jj] * inv_sigma)
+                    K_test[i,j] += np.exp(Sij[ii,jj] * inv_sigma)
+
+    print(K)
+    print(K_test)
 
     assert np.allclose(K, K_test), "Error in FCHL l2 kernels"
 
 if __name__ == "__main__":
 
-    test_krr_fchl_local()
-    test_krr_fchl_global()
-    test_krr_fchl_atomic()
-    test_fchl_local_periodic()
-    test_fchl_alchemy()
-    test_fchl_linear()
-    test_fchl_polynomial()
-    test_fchl_sigmoid()
-    test_fchl_multiquadratic()
-    test_fchl_inverse_multiquadratic()
-    test_fchl_bessel()
+    # test_krr_fchl_local()
+    # test_krr_fchl_global()
+    # test_krr_fchl_atomic()
+    # test_fchl_local_periodic()
+    # test_fchl_alchemy()
+    # test_fchl_linear()
+    # test_fchl_polynomial()
+    # test_fchl_sigmoid()
+    # test_fchl_multiquadratic()
+    # test_fchl_inverse_multiquadratic()
+    # test_fchl_bessel()
+    test_fchl_l2()
+
