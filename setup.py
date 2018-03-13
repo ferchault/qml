@@ -47,6 +47,7 @@ if any(["intelem" in arg for arg in sys.argv]):
 ext_ffchl_module = Extension(name = 'ffchl_module',
                           sources = [
                                 'qml/ffchl_module.f90',
+                                'qml/ffchl_kernels.f90',
                                 'qml/ffchl_scalar_kernels.f90',
                             ],
                           extra_f90_compile_args = COMPILER_FLAGS,
@@ -56,23 +57,34 @@ ext_ffchl_module = Extension(name = 'ffchl_module',
                           language = FORTRAN,
                           f2py_options=['--quiet'])
 
-ext_ffchl_scalar_kernels = Extension(name = 'ffchl_scalar_kernels',
-                          sources = ['qml/ffchl_scalar_kernels.f90'],
-                          extra_f90_compile_args = COMPILER_FLAGS,
-                          extra_f77_compile_args = COMPILER_FLAGS,
-                          extra_compile_args = COMPILER_FLAGS,
-                          extra_link_args = LINKER_FLAGS + MATH_LINKER_FLAGS,
-                          language = FORTRAN,
-                          f2py_options=['--quiet'])
+# ext_ffchl_kernels = Extension(name = 'ffchl_kernels',
+#                           sources = [
+#                                 'qml/ffchl_kernels.f90',
+#                             ],
+#                           extra_f90_compile_args = COMPILER_FLAGS,
+#                           extra_f77_compile_args = COMPILER_FLAGS,
+#                           extra_compile_args = COMPILER_FLAGS ,
+#                           extra_link_args = LINKER_FLAGS + MATH_LINKER_FLAGS,
+#                           language = FORTRAN,
+#                           f2py_options=['--quiet'])
+# 
+# ext_ffchl_scalar_kernels = Extension(name = 'ffchl_scalar_kernels',
+#                           sources = ['qml/ffchl_scalar_kernels.f90'],
+#                           extra_f90_compile_args = COMPILER_FLAGS,
+#                           extra_f77_compile_args = COMPILER_FLAGS,
+#                           extra_compile_args = COMPILER_FLAGS,
+#                           extra_link_args = LINKER_FLAGS + MATH_LINKER_FLAGS,
+#                           language = FORTRAN,
+#                           f2py_options=['--quiet'])
 
-ext_ffchl_vector_kernels = Extension(name = 'ffchl_vector_kernels',
-                          sources = ['qml/ffchl_vector_kernels.f90'],
-                          extra_f90_compile_args = COMPILER_FLAGS,
-                          extra_f77_compile_args = COMPILER_FLAGS,
-                          extra_compile_args = COMPILER_FLAGS,
-                          extra_link_args = LINKER_FLAGS + MATH_LINKER_FLAGS,
-                          language = FORTRAN,
-                          f2py_options=['--quiet'])
+# ext_ffchl_vector_kernels = Extension(name = 'ffchl_vector_kernels',
+#                           sources = ['qml/ffchl_vector_kernels.f90'],
+#                           extra_f90_compile_args = COMPILER_FLAGS,
+#                           extra_f77_compile_args = COMPILER_FLAGS,
+#                           extra_compile_args = COMPILER_FLAGS,
+#                           extra_link_args = LINKER_FLAGS + MATH_LINKER_FLAGS,
+#                           language = FORTRAN,
+#                           f2py_options=['--quiet'])
 
 ext_farad_kernels = Extension(name = 'farad_kernels',
                           sources = ['qml/farad_kernels.f90'],

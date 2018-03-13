@@ -1,9 +1,10 @@
-subroutine fget_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
-       & sigmas, nm1, nm2, nsigmas, &
+subroutine fget_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, nm1, nm2, nsigmas, &
        & t_width, d_width, cut_start, cut_distance, order, pd, &
-       & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, kernels)
+       & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, &
+       & kernel_idx, parameters, kernels)
 
-    use ffchl_module, only: scalar, get_threebody_fourier, get_twobody_weights
+    use ffchl_module, only: scalar, get_threebody_fourier, get_twobody_weights, get_angular_norm2
+    use ffchl_kernels, only: kernel
 
     implicit none
 
@@ -20,9 +21,6 @@ subroutine fget_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
     ! Number of neighbors for each atom in each compound
     integer, dimension(:,:), intent(in) :: nneigh1
     integer, dimension(:,:), intent(in) :: nneigh2
-
-    ! Sigma in the Gaussian kernel
-    double precision, dimension(:), intent(in) :: sigmas
 
     ! Number of molecules
     integer, intent(in) :: nm1
@@ -42,22 +40,21 @@ subroutine fget_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
     double precision, intent(in) :: distance_scale
     double precision, intent(in) :: angular_scale
 
-    ! -1.0 / sigma^2 for use in the kernel
-    double precision, dimension(nsigmas) :: inv_sigma2
-
     double precision, dimension(:,:), intent(in) :: pd
+
+    integer, intent(in) :: kernel_idx
+    double precision, dimension(:,:), intent(in) :: parameters
 
     ! Resulting alpha vector
     double precision, dimension(nsigmas,nm1,nm2), intent(out) :: kernels
 
     ! Internal counters
-    integer :: i, j, k! , l
+    integer :: i, j!, k! , l
     integer :: ni, nj
     integer :: a, b, n
 
     ! Temporary variables necessary for parallelization
-    double precision :: l2dist
-    double precision, allocatable, dimension(:,:) :: atomic_distance
+    double precision :: s12
 
     ! Pre-computed terms in the full distance matrix
     double precision, allocatable, dimension(:,:) :: self_scalar1
@@ -74,30 +71,20 @@ subroutine fget_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
 
     logical, intent(in) :: alchemy
 
-    ! Value of PI at full FORTRAN precision.
-    double precision, parameter :: pi = 4.0d0 * atan(1.0d0)
-
     ! counter for periodic distance
     integer :: pmax1
     integer :: pmax2
     ! integer :: nneighi
 
     double precision :: ang_norm2
-
+    
     integer :: maxneigh1
     integer :: maxneigh2
 
     maxneigh1 = maxval(nneigh1)
     maxneigh2 = maxval(nneigh2)
 
-    ang_norm2 = 0.0d0
-
-    do n = -10000, 10000
-        ang_norm2 = ang_norm2 + exp(-((t_width * n)**2)) &
-            & * (2.0d0 - 2.0d0 * cos(n * pi))
-    end do
-
-    ang_norm2 = sqrt(ang_norm2 * pi) * 2.0d0
+    ang_norm2 = get_angular_norm2(t_width)
 
     pmax1 = 0
     pmax2 = 0
@@ -109,14 +96,11 @@ subroutine fget_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
         pmax2 = max(pmax2, int(maxval(x2(a,1,2,:n2(a)))))
     enddo
 
-    inv_sigma2(:) = -0.5d0 / (sigmas(:))**2
-
     allocate(ksi1(nm1, maxval(n1), maxneigh1))
     allocate(ksi2(nm2, maxval(n2), maxneigh2))
 
     ksi1 = 0.0d0
     ksi2 = 0.0d0
-
 
     !$OMP PARALLEL DO PRIVATE(ni)
     do a = 1, nm1
@@ -212,46 +196,36 @@ subroutine fget_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
     enddo
     !$OMP END PARALLEL DO
 
-
-    allocate(atomic_distance(maxval(n1), maxval(n2)))
-
     kernels(:,:,:) = 0.0d0
-    atomic_distance(:,:) = 0.0d0
 
-    !$OMP PARALLEL DO schedule(dynamic) PRIVATE(l2dist,atomic_distance,ni,nj)
+    !$OMP PARALLEL DO schedule(dynamic) PRIVATE(s12,ni,nj)
     do b = 1, nm2
         nj = n2(b)
         do a = 1, nm1
             ni = n1(a)
 
-            atomic_distance(:,:) = 0.0d0
-
             do i = 1, ni
                 do j = 1, nj
 
-                    l2dist = scalar(x1(a,i,:,:), x2(b,j,:,:), &
+                    s12 = scalar(x1(a,i,:,:), x2(b,j,:,:), &
                         & nneigh1(a,i), nneigh2(b,j), ksi1(a,i,:), ksi2(b,j,:), &
                         & sinp1(a,i,:,:,:), sinp2(b,j,:,:,:), &
                         & cosp1(a,i,:,:,:), cosp2(b,j,:,:,:), &
                         & t_width, d_width, cut_distance, order, &
                         & pd, ang_norm2, distance_scale, angular_scale, alchemy)
 
-                    l2dist = self_scalar1(a,i) + self_scalar2(b,j) - 2.0d0 * l2dist
-                    atomic_distance(i,j) = l2dist
-
+                    kernels(:, a, b) = kernels(:, a, b) &
+                        & + kernel(self_scalar1(a,i),  self_scalar2(b,j), s12, &
+                        & kernel_idx, parameters)
+                    
                 enddo
-            enddo
-
-            do k = 1, nsigmas
-                kernels(k, a, b) = sum(exp(atomic_distance(:ni,:nj) &
-                    & * inv_sigma2(k)))
             enddo
 
         enddo
     enddo
     !$OMP END PARALLEL DO
 
-    deallocate(atomic_distance)
+    ! deallocate(atomic_distance)
     deallocate(self_scalar1)
     deallocate(self_scalar2)
     deallocate(ksi1)
@@ -264,11 +238,13 @@ subroutine fget_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
 end subroutine fget_kernels_fchl
 
 
-subroutine fget_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsigmas, &
+subroutine fget_symmetric_kernels_fchl(x1, n1, nneigh1, nm1, nsigmas, &
        & t_width, d_width, cut_start, cut_distance, order, pd, &
-       & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, kernels)
+       & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, &
+       & kernel_idx, parameters, kernels)
 
-    use ffchl_module, only: scalar, get_threebody_fourier, get_twobody_weights
+    use ffchl_module, only: scalar, get_threebody_fourier, get_twobody_weights, get_angular_norm2
+    use ffchl_kernels, only: kernel
 
     implicit none
 
@@ -282,9 +258,6 @@ subroutine fget_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsigmas, &
 
     ! Number of neighbors for each atom in each compound
     integer, dimension(:,:), intent(in) :: nneigh1
-
-    ! Sigma in the Gaussian kernel
-    double precision, dimension(:), intent(in) :: sigmas
 
     ! Number of molecules
     integer, intent(in) :: nm1
@@ -304,9 +277,6 @@ subroutine fget_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsigmas, &
     double precision, intent(in) :: angular_scale
 
     logical, intent(in) :: alchemy
-    ! -1.0 / sigma^2 for use in the kernel
-    double precision, dimension(nsigmas) :: inv_sigma2
-
     double precision, dimension(:,:), intent(in) :: pd
 
     ! Resulting alpha vector
@@ -318,6 +288,7 @@ subroutine fget_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsigmas, &
 
     ! Temporary variables necessary for parallelization
     double precision :: l2dist
+    double precision :: s12
     double precision, allocatable, dimension(:,:) :: atomic_distance
 
     ! Pre-computed terms in the full distance matrix
@@ -329,8 +300,8 @@ subroutine fget_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsigmas, &
     double precision, allocatable, dimension(:,:,:,:,:) :: sinp1
     double precision, allocatable, dimension(:,:,:,:,:) :: cosp1
 
-    ! Value of PI at full FORTRAN precision.
-    double precision, parameter :: pi = 4.0d0 * atan(1.0d0)
+    integer, intent(in) :: kernel_idx
+    double precision, dimension(:,:), intent(in) :: parameters
 
     ! counter for periodic distance
     integer :: pmax1
@@ -342,22 +313,13 @@ subroutine fget_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsigmas, &
 
     maxneigh1 = maxval(nneigh1)
 
-    ang_norm2 = 0.0d0
-
-    do n = -10000, 10000
-        ang_norm2 = ang_norm2 + exp(-((t_width * n)**2)) &
-            & * (2.0d0 - 2.0d0 * cos(n * pi))
-    end do
-
-    ang_norm2 = sqrt(ang_norm2 * pi) * 2.0d0
+    ang_norm2 = get_angular_norm2(t_width)
 
     pmax1 = 0
 
     do a = 1, nm1
         pmax1 = max(pmax1, int(maxval(x1(a,1,2,:n1(a)))))
     enddo
-
-    inv_sigma2(:) = -0.5d0 / (sigmas(:))**2
 
     allocate(ksi1(nm1, maxval(n1), maxval(nneigh1)))
 
@@ -410,46 +372,37 @@ subroutine fget_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsigmas, &
     enddo
     !$OMP END PARALLEL DO
 
-    allocate(atomic_distance(maxval(n1), maxval(n1)))
-
     kernels(:,:,:) = 0.0d0
-    atomic_distance(:,:) = 0.0d0
 
-    !$OMP PARALLEL DO schedule(dynamic) PRIVATE(l2dist,atomic_distance,ni,nj)
+    !$OMP PARALLEL DO schedule(dynamic) PRIVATE(s12,ni,nj)
     do b = 1, nm1
         nj = n1(b)
         do a = b, nm1
             ni = n1(a)
 
-            atomic_distance(:,:) = 0.0d0
-
             do i = 1, ni
                 do j = 1, nj
 
-                    l2dist = scalar(x1(a,i,:,:), x1(b,j,:,:), &
+                    s12 = scalar(x1(a,i,:,:), x1(b,j,:,:), &
                         & nneigh1(a,i), nneigh1(b,j), ksi1(a,i,:), ksi1(b,j,:), &
                         & sinp1(a,i,:,:,:), sinp1(b,j,:,:,:), &
                         & cosp1(a,i,:,:,:), cosp1(b,j,:,:,:), &
                         & t_width, d_width, cut_distance, order, &
                         & pd, ang_norm2, distance_scale, angular_scale, alchemy)
 
-                    l2dist = self_scalar1(a,i) + self_scalar1(b,j) - 2.0d0 * l2dist
-                    atomic_distance(i,j) = l2dist
+                    kernels(:, a, b) = kernels(:, a, b) &
+                        & + kernel(self_scalar1(a,i),  self_scalar1(b,j), s12, &
+                        & kernel_idx, parameters)
+                    
+                    kernels(:, b, a) = kernels(:, a, b)
 
                 enddo
-            enddo
-
-            do k = 1, nsigmas
-                kernels(k, a, b) =  sum(exp(atomic_distance(:ni,:nj) &
-                    & * inv_sigma2(k)))
-                kernels(k, b, a) = kernels(k, a, b)
             enddo
 
         enddo
     enddo
     !$OMP END PARALLEL DO
 
-    deallocate(atomic_distance)
     deallocate(self_scalar1)
     deallocate(ksi1)
     deallocate(cosp1)
@@ -458,11 +411,13 @@ subroutine fget_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsigmas, &
 end subroutine fget_symmetric_kernels_fchl
 
 
-subroutine fget_global_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsigmas, &
+subroutine fget_global_symmetric_kernels_fchl(x1, n1, nneigh1, nm1, nsigmas, &
        & t_width, d_width, cut_start, cut_distance, order, pd, &
-       & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, kernels)
+       & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, &
+       & kernel_idx, parameters, kernels)
 
-    use ffchl_module, only: scalar, get_threebody_fourier, get_twobody_weights
+    use ffchl_module, only: scalar, get_threebody_fourier, get_twobody_weights, get_angular_norm2
+    use ffchl_kernels, only: kernel
 
     implicit none
 
@@ -476,9 +431,6 @@ subroutine fget_global_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsig
 
     ! Number of neighbors for each atom in each compound
     integer, dimension(:,:), intent(in) :: nneigh1
-
-    ! Sigma in the Gaussian kernel
-    double precision, dimension(:), intent(in) :: sigmas
 
     ! Number of molecules
     integer, intent(in) :: nm1
@@ -498,9 +450,6 @@ subroutine fget_global_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsig
     double precision, intent(in) :: angular_scale
     logical, intent(in) :: alchemy
 
-    ! -1.0 / sigma^2 for use in the kernel
-    double precision, dimension(nsigmas) :: inv_sigma2
-
     double precision, dimension(:,:), intent(in) :: pd
 
     ! Resulting alpha vector
@@ -512,6 +461,7 @@ subroutine fget_global_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsig
 
     ! Temporary variables necessary for parallelization
     double precision :: l2dist
+    double precision :: s12
     double precision, allocatable, dimension(:,:) :: atomic_distance
 
     ! Pre-computed terms in the full distance matrix
@@ -523,8 +473,8 @@ subroutine fget_global_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsig
     double precision, allocatable, dimension(:,:,:,:,:) :: sinp1
     double precision, allocatable, dimension(:,:,:,:,:) :: cosp1
 
-    ! Value of PI at full FORTRAN precision.
-    double precision, parameter :: pi = 4.0d0 * atan(1.0d0)
+    integer, intent(in) :: kernel_idx
+    double precision, dimension(:,:), intent(in) :: parameters
 
     ! counter for periodic distance
     integer :: pmax1
@@ -538,22 +488,13 @@ subroutine fget_global_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsig
 
     maxneigh1 = maxval(nneigh1)
 
-    ang_norm2 = 0.0d0
-
-    do n = -10000, 10000
-        ang_norm2 = ang_norm2 + exp(-((t_width * n)**2)) &
-            & * (2.0d0 - 2.0d0 * cos(n * pi))
-    end do
-
-    ang_norm2 = sqrt(ang_norm2 * pi) * 2.0d0
+    ang_norm2 = get_angular_norm2(t_width)
 
     pmax1 = 0
 
     do a = 1, nm1
         pmax1 = max(pmax1, int(maxval(x1(a,1,2,:n1(a)))))
     enddo
-
-    inv_sigma2(:) = -0.5d0 / (sigmas(:))**2
 
     allocate(ksi1(nm1, maxval(n1), maxval(nneigh1)))
 
@@ -616,7 +557,7 @@ subroutine fget_global_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsig
     kernels(:,:,:) = 0.0d0
     atomic_distance(:,:) = 0.0d0
 
-    !$OMP PARALLEL DO schedule(dynamic) PRIVATE(l2dist,atomic_distance,ni,nj)
+    !$OMP PARALLEL DO schedule(dynamic) PRIVATE(l2dist,atomic_distance,ni,nj,mol_dist)
     do b = 1, nm1
         nj = n1(b)
         do a = b, nm1
@@ -639,12 +580,13 @@ subroutine fget_global_symmetric_kernels_fchl(x1, n1, nneigh1, sigmas, nm1, nsig
                 enddo
             enddo
 
-            mol_dist = self_scalar1(a) + self_scalar1(b) - 2.0d0 * sum(atomic_distance(:ni,:nj))
+            mol_dist = sum(atomic_distance(:ni,:nj))
 
-            do k = 1, nsigmas
-                kernels(k, a, b) = exp(mol_dist * inv_sigma2(k))
-                kernels(k, b, a) = kernels(k, a, b)
-            enddo
+            kernels(:, a, b) = kernel(self_scalar1(a),  self_scalar1(b), mol_dist, &
+                & kernel_idx, parameters)
+
+            kernels(:, b, a) = kernels(:, a, b)
+
         enddo
     enddo
     !$OMP END PARALLEL DO
@@ -659,11 +601,13 @@ end subroutine fget_global_symmetric_kernels_fchl
 
 
 subroutine fget_global_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
-       & sigmas, nm1, nm2, nsigmas, &
+       & nm1, nm2, nsigmas, &
        & t_width, d_width, cut_start, cut_distance, order, pd, &
-       & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, kernels)
+       & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, &
+       & kernel_idx, parameters, kernels)
 
-    use ffchl_module, only: scalar, get_threebody_fourier, get_twobody_weights
+    use ffchl_module, only: scalar, get_threebody_fourier, get_twobody_weights, get_angular_norm2
+    use ffchl_kernels, only: kernel
 
     implicit none
 
@@ -680,9 +624,6 @@ subroutine fget_global_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
     ! Number of neighbors for each atom in each compound
     integer, dimension(:,:), intent(in) :: nneigh1
     integer, dimension(:,:), intent(in) :: nneigh2
-
-    ! Sigma in the Gaussian kernel
-    double precision, dimension(:), intent(in) :: sigmas
 
     ! Number of molecules
     integer, intent(in) :: nm1
@@ -702,9 +643,6 @@ subroutine fget_global_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
     double precision, intent(in) :: distance_scale
     double precision, intent(in) :: angular_scale
     logical, intent(in) :: alchemy
-
-    ! -1.0 / sigma^2 for use in the kernel
-    double precision, dimension(nsigmas) :: inv_sigma2
 
     double precision, dimension(:,:), intent(in) :: pd
 
@@ -733,8 +671,8 @@ subroutine fget_global_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
     double precision, allocatable, dimension(:,:,:,:,:) :: cosp1
     double precision, allocatable, dimension(:,:,:,:,:) :: cosp2
 
-    ! Value of PI at full FORTRAN precision.
-    double precision, parameter :: pi = 4.0d0 * atan(1.0d0)
+    integer, intent(in) :: kernel_idx
+    double precision, dimension(:,:), intent(in) :: parameters
 
     ! counter for periodic distance
     integer :: pmax1
@@ -750,14 +688,7 @@ subroutine fget_global_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
     maxneigh1 = maxval(nneigh1)
     maxneigh2 = maxval(nneigh2)
 
-    ang_norm2 = 0.0d0
-
-    do n = -10000, 10000
-        ang_norm2 = ang_norm2 + exp(-((t_width * n)**2)) &
-            & * (2.0d0 - 2.0d0 * cos(n * pi))
-    end do
-
-    ang_norm2 = sqrt(ang_norm2 * pi) * 2.0d0
+    ang_norm2 = get_angular_norm2(t_width)
 
     pmax1 = 0
     pmax2 = 0
@@ -768,8 +699,6 @@ subroutine fget_global_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
     do a = 1, nm2
         pmax2 = max(pmax2, int(maxval(x2(a,1,2,:n2(a)))))
     enddo
-
-    inv_sigma2(:) = -0.5d0 / (sigmas(:))**2
 
     allocate(ksi1(nm1, maxval(n1), maxval(nneigh1)))
     allocate(ksi2(nm2, maxval(n2), maxval(nneigh2)))
@@ -884,7 +813,7 @@ subroutine fget_global_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
     kernels(:,:,:) = 0.0d0
     atomic_distance(:,:) = 0.0d0
 
-    !$OMP PARALLEL DO schedule(dynamic) PRIVATE(l2dist,atomic_distance,ni,nj)
+    !$OMP PARALLEL DO schedule(dynamic) PRIVATE(l2dist,atomic_distance,ni,nj,mol_dist)
     do b = 1, nm2
         nj = n2(b)
         do a = 1, nm1
@@ -907,11 +836,10 @@ subroutine fget_global_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
                 enddo
             enddo
 
-            mol_dist = self_scalar1(a) + self_scalar2(b) - 2.0d0 * sum(atomic_distance(:ni,:nj))
+            mol_dist = sum(atomic_distance(:ni,:nj))
 
-            do k = 1, nsigmas
-                kernels(k, a, b) = exp(mol_dist * inv_sigma2(k))
-            enddo
+            kernels(:, a, b) = kernel(self_scalar1(a),  self_scalar2(b), mol_dist, &
+                & kernel_idx, parameters)
 
         enddo
     enddo
@@ -931,11 +859,13 @@ end subroutine fget_global_kernels_fchl
 
 
 subroutine fget_atomic_kernels_fchl(x1, x2, nneigh1, nneigh2, &
-       & sigmas, na1, na2, nsigmas, &
+       & na1, na2, nsigmas, &
        & t_width, d_width, cut_start, cut_distance, order, pd, &
-       & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, kernels)
+       & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, &
+       & kernel_idx, parameters, kernels)
 
-    use ffchl_module, only: scalar, get_threebody_fourier, get_twobody_weights
+    use ffchl_module, only: scalar, get_threebody_fourier, get_twobody_weights, get_angular_norm2
+    use ffchl_kernels, only: kernel
 
     implicit none
 
@@ -948,9 +878,6 @@ subroutine fget_atomic_kernels_fchl(x1, x2, nneigh1, nneigh2, &
     ! Number of neighbors for each atom in each compound
     integer, dimension(:), intent(in) :: nneigh1
     integer, dimension(:), intent(in) :: nneigh2
-
-    ! Sigma in the Gaussian kernel
-    double precision, dimension(:), intent(in) :: sigmas
 
     ! Number of molecules
     integer, intent(in) :: na1
@@ -971,9 +898,6 @@ subroutine fget_atomic_kernels_fchl(x1, x2, nneigh1, nneigh2, &
     double precision, intent(in) :: angular_scale
     logical, intent(in) :: alchemy
 
-    ! -1.0 / sigma^2 for use in the kernel
-    double precision, dimension(nsigmas) :: inv_sigma2
-
     double precision, dimension(:,:), intent(in) :: pd
 
     ! Resulting alpha vector
@@ -986,6 +910,7 @@ subroutine fget_atomic_kernels_fchl(x1, x2, nneigh1, nneigh2, &
 
     ! Temporary variables necessary for parallelization
     double precision :: l2dist
+    double precision :: s12
 
     ! Pre-computed terms in the full distance matrix
     double precision, allocatable, dimension(:) :: self_scalar1
@@ -999,9 +924,9 @@ subroutine fget_atomic_kernels_fchl(x1, x2, nneigh1, nneigh2, &
     double precision, allocatable, dimension(:,:,:,:) :: sinp2
     double precision, allocatable, dimension(:,:,:,:) :: cosp1
     double precision, allocatable, dimension(:,:,:,:) :: cosp2
-
-    ! Value of PI at full FORTRAN precision.
-    double precision, parameter :: pi = 4.0d0 * atan(1.0d0)
+    
+    integer, intent(in) :: kernel_idx
+    double precision, dimension(:,:), intent(in) :: parameters
 
     ! counter for periodic distance
     integer :: pmax1
@@ -1017,14 +942,7 @@ subroutine fget_atomic_kernels_fchl(x1, x2, nneigh1, nneigh2, &
     maxneigh1 = maxval(nneigh1)
     maxneigh2 = maxval(nneigh2)
 
-    ang_norm2 = 0.0d0
-
-    do n = -10000, 10000
-        ang_norm2 = ang_norm2 + exp(-((t_width * n)**2)) &
-            & * (2.0d0 - 2.0d0 * cos(n * pi))
-    end do
-
-    ang_norm2 = sqrt(ang_norm2 * pi) * 2.0d0
+    ang_norm2 = get_angular_norm2(t_width)
 
     pmax1 = 0
     pmax2 = 0
@@ -1035,8 +953,6 @@ subroutine fget_atomic_kernels_fchl(x1, x2, nneigh1, nneigh2, &
     do a = 1, na2
         pmax2 = max(pmax2, int(maxval(x2(a,2,:nneigh2(a)))))
     enddo
-
-    inv_sigma2(:) = -0.5d0 / (sigmas(:))**2
 
     allocate(ksi1(na1, maxval(nneigh1)))
     allocate(ksi2(na2, maxval(nneigh2)))
@@ -1124,18 +1040,19 @@ subroutine fget_atomic_kernels_fchl(x1, x2, nneigh1, nneigh2, &
 
     kernels(:,:,:) = 0.0d0
 
-    !$OMP PARALLEL DO schedule(dynamic) PRIVATE(l2dist)
+    !$OMP PARALLEL DO schedule(dynamic) PRIVATE(s12)
     do i = 1, na1
         do j = 1, na2
 
-            l2dist = self_scalar1(i) + self_scalar2(j) - 2.0d0 * scalar(x1(i,:,:), x2(j,:,:), &
+            s12 =  scalar(x1(i,:,:), x2(j,:,:), &
                 & nneigh1(i), nneigh2(j), ksi1(i,:), ksi2(j,:), &
                 & sinp1(i,:,:,:), sinp2(j,:,:,:), &
                 & cosp1(i,:,:,:), cosp2(j,:,:,:), &
                 & t_width, d_width, cut_distance, order, &
                 & pd, ang_norm2, distance_scale, angular_scale, alchemy)
 
-            kernels(:, i, j) = exp(l2dist * inv_sigma2(:))
+            kernels(:, i, j) = kernel(self_scalar1(i),  self_scalar2(j), s12, &
+                    & kernel_idx, parameters)
 
         enddo
     enddo
@@ -1153,12 +1070,13 @@ subroutine fget_atomic_kernels_fchl(x1, x2, nneigh1, nneigh2, &
 end subroutine fget_atomic_kernels_fchl
 
 
-subroutine fget_atomic_symmetric_kernels_fchl(x1, nneigh1, &
-       & sigmas, na1, nsigmas, &
+subroutine fget_atomic_symmetric_kernels_fchl(x1, nneigh1, na1, nsigmas, &
        & t_width, d_width, cut_start, cut_distance, order, pd, &
-       & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, kernels)
+       & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, &
+       & kernel_idx, parameters, kernels)
 
-    use ffchl_module, only: scalar, get_threebody_fourier, get_twobody_weights
+    use ffchl_module, only: scalar, get_threebody_fourier, get_twobody_weights, get_angular_norm2
+    use ffchl_kernels, only: kernel
 
     implicit none
 
@@ -1169,9 +1087,6 @@ subroutine fget_atomic_symmetric_kernels_fchl(x1, nneigh1, &
 
     ! Number of neighbors for each atom in each compound
     integer, dimension(:), intent(in) :: nneigh1
-
-    ! Sigma in the Gaussian kernel
-    double precision, dimension(:), intent(in) :: sigmas
 
     ! Number of molecules
     integer, intent(in) :: na1
@@ -1191,10 +1106,10 @@ subroutine fget_atomic_symmetric_kernels_fchl(x1, nneigh1, &
     double precision, intent(in) :: angular_scale
     logical, intent(in) :: alchemy
 
-    ! -1.0 / sigma^2 for use in the kernel
-    double precision, dimension(nsigmas) :: inv_sigma2
-
     double precision, dimension(:,:), intent(in) :: pd
+    
+    integer, intent(in) :: kernel_idx
+    double precision, dimension(:,:), intent(in) :: parameters
 
     ! Resulting alpha vector
     double precision, dimension(nsigmas,na1,na1), intent(out) :: kernels
@@ -1206,6 +1121,7 @@ subroutine fget_atomic_symmetric_kernels_fchl(x1, nneigh1, &
 
     ! Temporary variables necessary for parallelization
     double precision :: l2dist
+    double precision :: s12
 
     ! Pre-computed terms in the full distance matrix
     double precision, allocatable, dimension(:) :: self_scalar1
@@ -1216,9 +1132,6 @@ subroutine fget_atomic_symmetric_kernels_fchl(x1, nneigh1, &
     double precision, allocatable, dimension(:,:,:,:) :: sinp1
     double precision, allocatable, dimension(:,:,:,:) :: cosp1
 
-    ! Value of PI at full FORTRAN precision.
-    double precision, parameter :: pi = 4.0d0 * atan(1.0d0)
-
     ! counter for periodic distance
     integer :: pmax1
     ! integer :: nneighi
@@ -1228,22 +1141,13 @@ subroutine fget_atomic_symmetric_kernels_fchl(x1, nneigh1, &
 
     maxneigh1 = maxval(nneigh1)
 
-    ang_norm2 = 0.0d0
-
-    do n = -10000, 10000
-        ang_norm2 = ang_norm2 + exp(-((t_width * n)**2)) &
-            & * (2.0d0 - 2.0d0 * cos(n * pi))
-    end do
-
-    ang_norm2 = sqrt(ang_norm2 * pi) * 2.0d0
+    ang_norm2 = get_angular_norm2(t_width)
 
     pmax1 = 0
 
     do a = 1, na1
         pmax1 = max(pmax1, int(maxval(x1(a,2,:nneigh1(a)))))
     enddo
-
-    inv_sigma2(:) = -0.5d0 / (sigmas(:))**2
 
     allocate(ksi1(na1, maxval(nneigh1)))
 
@@ -1291,19 +1195,21 @@ subroutine fget_atomic_symmetric_kernels_fchl(x1, nneigh1, &
 
     kernels(:,:,:) = 0.0d0
 
-    !$OMP PARALLEL DO schedule(dynamic) PRIVATE(l2dist)
+    !$OMP PARALLEL DO schedule(dynamic) PRIVATE(s12)
     do i = 1, na1
-        do j = 1, na1
+        do j = i, na1
 
-            l2dist = self_scalar1(i) + self_scalar1(j) - 2.0d0 * scalar(x1(i,:,:), x1(j,:,:), &
+            s12 = scalar(x1(i,:,:), x1(j,:,:), &
                 & nneigh1(i), nneigh1(j), ksi1(i,:), ksi1(j,:), &
                 & sinp1(i,:,:,:), sinp1(j,:,:,:), &
                 & cosp1(i,:,:,:), cosp1(j,:,:,:), &
                 & t_width, d_width, cut_distance, order, &
                 & pd, ang_norm2, distance_scale, angular_scale, alchemy)
 
-            kernels(:, i, j) = exp(l2dist * inv_sigma2(:))
+            kernels(:, i, j) = kernel(self_scalar1(i),  self_scalar1(j), s12, &
+                    & kernel_idx, parameters)
 
+            kernels(:, j, i) = kernels(:, i, j)
         enddo
     enddo
     !$OMP END PARALLEL DO

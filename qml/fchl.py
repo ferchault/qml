@@ -31,6 +31,7 @@ from .ffchl_module import fget_atomic_kernels_fchl
 from .ffchl_module import fget_atomic_symmetric_kernels_fchl
 
 from .alchemy import get_alchemy
+from .fchl_kernels import get_kernel_parameters
 
 def generate_representation(coordinates, nuclear_charges,
         max_size=23, neighbors=23, cut_distance = 5.0, cell=None):
@@ -101,13 +102,14 @@ def generate_representation(coordinates, nuclear_charges,
     return M
 
 
-def get_local_kernels(A, B, sigmas, \
+def get_local_kernels(A, B, \
         two_body_scaling=np.sqrt(8), three_body_scaling=1.6,
         two_body_width=0.2, three_body_width=np.pi,
         two_body_power=4.0, three_body_power=2.0,
         cut_start=1.0, cut_distance=5.0,
         fourier_order=1, alchemy="periodic-table",
-        alchemy_period_width=1.6, alchemy_group_width=1.6):
+        alchemy_period_width=1.6, alchemy_group_width=1.6, 
+        kernel="gaussian", kernel_args=None):
     """ Calculates the Gaussian kernel matrix K, where :math:`K_{ij}`:
 
             :math:`K_{ij} = \\exp \\big( -\\frac{\\|A_i - B_j\\|_2^2}{2\sigma^2} \\big)`
@@ -120,8 +122,6 @@ def get_local_kernels(A, B, sigmas, \
         :type A: numpy array
         :param B: Array of FCHL representation - shape=(M, maxsize, 5, maxneighbors).
         :type B: numpy array
-        :param sigma: List of kernel-widths.
-        :type sigma: list
 
         :param two_body_scaling: Weight for 2-body terms.
         :type two_body_scaling: float
@@ -188,24 +188,22 @@ def get_local_kernels(A, B, sigmas, \
         for i, x in enumerate(representation[:ni]):
             neighbors2[a,i] = len(np.where(x[0]< cut_distance)[0])
 
-    nsigmas = len(sigmas)
-
     doalchemy, pd = get_alchemy(alchemy, emax=100, r_width=alchemy_group_width, c_width=alchemy_period_width)
 
-    sigmas = np.array(sigmas)
-    assert len(sigmas.shape) == 1, "Third argument (sigmas) is not a 1D list/numpy.array!"
+    kernel_idx, kernel_parameters, n_kernels = get_kernel_parameters(kernel, kernel_args)
 
-    return fget_kernels_fchl(A, B, N1, N2, neighbors1, neighbors2, sigmas, \
-                nm1, nm2, nsigmas, three_body_width, two_body_width, cut_start, cut_distance, fourier_order, pd, two_body_scaling, three_body_scaling, doalchemy, two_body_power, three_body_power)
+    return fget_kernels_fchl(A, B, N1, N2, neighbors1, neighbors2, nm1, nm2, n_kernels, \
+                three_body_width, two_body_width, cut_start, cut_distance, fourier_order, pd, two_body_scaling, three_body_scaling, doalchemy, two_body_power, three_body_power, kernel_idx, kernel_parameters)
 
 
-def get_local_symmetric_kernels(A, sigmas, \
+def get_local_symmetric_kernels(A, \
         two_body_scaling=np.sqrt(8), three_body_scaling=1.6,
         two_body_width=0.2, three_body_width=np.pi,
         two_body_power=4.0, three_body_power=2.0,
         cut_start=1.0, cut_distance=5.0,
         fourier_order=1, alchemy="periodic-table",
-        alchemy_period_width=1.6, alchemy_group_width=1.6):
+        alchemy_period_width=1.6, alchemy_group_width=1.6,
+        kernel="gaussian", kernel_args=None):
     """ Calculates the Gaussian kernel matrix K, where :math:`K_{ij}`:
 
             :math:`K_{ij} = \\exp \\big( -\\frac{\\|A_i - A_j\\|_2^2}{2\sigma^2} \\big)`
@@ -216,8 +214,6 @@ def get_local_symmetric_kernels(A, sigmas, \
 
         :param A: Array of FCHL representation - shape=(N, maxsize, 5, maxneighbors).
         :type A: numpy array
-        :param sigma: List of kernel-widths.
-        :type sigma: list
 
         :param two_body_scaling: Weight for 2-body terms.
         :type two_body_scaling: float
@@ -269,24 +265,21 @@ def get_local_symmetric_kernels(A, sigmas, \
         for i, x in enumerate(representation[:ni]):
             neighbors1[a,i] = len(np.where(x[0]< cut_distance)[0])
 
-    nsigmas = len(sigmas)
-
     doalchemy, pd = get_alchemy(alchemy, emax=100, r_width=alchemy_group_width, c_width=alchemy_period_width)
+    kernel_idx, kernel_parameters, n_kernels = get_kernel_parameters(kernel, kernel_args)
 
-    sigmas = np.array(sigmas)
-    assert len(sigmas.shape) == 1, "Second argument (sigmas) is not a 1D list/numpy.array!"
-
-    return fget_symmetric_kernels_fchl(A, N1, neighbors1, sigmas, \
-                nm1, nsigmas, three_body_width, two_body_width, cut_start, cut_distance, fourier_order, pd, two_body_scaling, three_body_scaling, doalchemy, two_body_power, three_body_power)
+    return fget_symmetric_kernels_fchl(A, N1, neighbors1, nm1, n_kernels, \
+                three_body_width, two_body_width, cut_start, cut_distance, fourier_order, pd, two_body_scaling, three_body_scaling, doalchemy, two_body_power, three_body_power, kernel_idx, kernel_parameters)
 
 
-def get_global_symmetric_kernels(A, sigmas, \
+def get_global_symmetric_kernels(A, \
         two_body_scaling=np.sqrt(8), three_body_scaling=1.6,
         two_body_width=0.2, three_body_width=np.pi,
         two_body_power=4.0, three_body_power=2.0,
         cut_start=1.0, cut_distance=5.0,
         fourier_order=1, alchemy="periodic-table",
-        alchemy_period_width=1.6, alchemy_group_width=1.6):
+        alchemy_period_width=1.6, alchemy_group_width=1.6,
+        kernel="gaussian", kernel_args=None):
     """ Calculates the Gaussian kernel matrix K, where :math:`K_{ij}`:
 
             :math:`K_{ij} = \\exp \\big( -\\frac{\\|A_i - A_j\\|_2^2}{2\sigma^2} \\big)`
@@ -297,8 +290,6 @@ def get_global_symmetric_kernels(A, sigmas, \
 
         :param A: Array of FCHL representation - shape=(N, maxsize, 5, maxneighbors).
         :type A: numpy array
-        :param sigma: List of kernel-widths.
-        :type sigma: list
 
         :param two_body_scaling: Weight for 2-body terms.
         :type two_body_scaling: float
@@ -350,24 +341,21 @@ def get_global_symmetric_kernels(A, sigmas, \
         for i, x in enumerate(representation[:ni]):
             neighbors1[a,i] = len(np.where(x[0]< cut_distance)[0])
 
-    nsigmas = len(sigmas)
-
     doalchemy, pd = get_alchemy(alchemy, emax=100, r_width=alchemy_group_width, c_width=alchemy_period_width)
+    kernel_idx, kernel_parameters, nsigmas = get_kernel_parameters(kernel, kernel_args)
 
-    sigmas = np.array(sigmas)
-    assert len(sigmas.shape) == 1, "Second argument (sigmas) is not a 1D list/numpy.array!"
-
-    return fget_global_symmetric_kernels_fchl(A, N1, neighbors1, sigmas, \
-                nm1, nsigmas, three_body_width, two_body_width, cut_start, cut_distance, fourier_order, pd, two_body_scaling, three_body_scaling, doalchemy, two_body_power, three_body_power)
+    return fget_global_symmetric_kernels_fchl(A, N1, neighbors1, nm1, nsigmas, \
+            three_body_width, two_body_width, cut_start, cut_distance, fourier_order, pd, two_body_scaling, three_body_scaling, doalchemy, two_body_power, three_body_power, kernel_idx, kernel_parameters)
 
 
-def get_global_kernels(A, B, sigmas, \
+def get_global_kernels(A, B, \
         two_body_scaling=np.sqrt(8), three_body_scaling=1.6,
         two_body_width=0.2, three_body_width=np.pi,
         two_body_power=4.0, three_body_power=2.0,
         cut_start=1.0, cut_distance=5.0,
         fourier_order=1, alchemy="periodic-table",
-        alchemy_period_width=1.6, alchemy_group_width=1.6):
+        alchemy_period_width=1.6, alchemy_group_width=1.6,
+        kernel="gaussian", kernel_args=None):
     """ Calculates the Gaussian kernel matrix K, where :math:`K_{ij}`:
 
             :math:`K_{ij} = \\exp \\big( -\\frac{\\|A_i - B_j\\|_2^2}{2\sigma^2} \\big)`
@@ -380,8 +368,6 @@ def get_global_kernels(A, B, sigmas, \
         :type A: numpy array
         :param B: Array of FCHL representation - shape=(M, maxsize, 5, maxneighbors).
         :type B: numpy array
-        :param sigma: List of kernel-widths.
-        :type sigma: list
 
         :param two_body_scaling: Weight for 2-body terms.
         :type two_body_scaling: float
@@ -448,24 +434,21 @@ def get_global_kernels(A, B, sigmas, \
         for i, x in enumerate(representation[:ni]):
             neighbors2[a,i] = len(np.where(x[0]< cut_distance)[0])
 
-    nsigmas = len(sigmas)
-
     doalchemy, pd = get_alchemy(alchemy, emax=100, r_width=alchemy_group_width, c_width=alchemy_period_width)
+    kernel_idx, kernel_parameters, nsigmas = get_kernel_parameters(kernel, kernel_args)
 
-    sigmas = np.array(sigmas)
-    assert len(sigmas.shape) == 1, "Third argument (sigmas) is not a 1D list/numpy.array!"
-
-    return fget_global_kernels_fchl(A, B, N1, N2, neighbors1, neighbors2, sigmas, \
-                nm1, nm2, nsigmas, three_body_width, two_body_width, cut_start, cut_distance, fourier_order, pd, two_body_scaling, three_body_scaling, doalchemy, two_body_power, three_body_power)
+    return fget_global_kernels_fchl(A, B, N1, N2, neighbors1, neighbors2, nm1, nm2, nsigmas, \
+            three_body_width, two_body_width, cut_start, cut_distance, fourier_order, pd, two_body_scaling, three_body_scaling, doalchemy, two_body_power, three_body_power, kernel_idx, kernel_parameters)
 
 
-def get_atomic_kernels(A, B, sigmas, \
+def get_atomic_kernels(A, B, \
         two_body_scaling=np.sqrt(8), three_body_scaling=1.6,
         two_body_width=0.2, three_body_width=np.pi,
         two_body_power=4.0, three_body_power=2.0,
         cut_start=1.0, cut_distance=5.0,
         fourier_order=1, alchemy="periodic-table",
-        alchemy_period_width=1.6, alchemy_group_width=1.6):
+        alchemy_period_width=1.6, alchemy_group_width=1.6,
+        kernel="gaussian", kernel_args=None):
     """ Calculates the Gaussian kernel matrix K, where :math:`K_{ij}`:
 
             :math:`K_{ij} = \\exp \\big( -\\frac{\\|A_i - B_j\\|_2^2}{2\sigma^2} \\big)`
@@ -533,24 +516,21 @@ def get_atomic_kernels(A, B, sigmas, \
     for i, x in enumerate(B):
         neighbors2[i] = len(np.where(x[0]< cut_distance)[0])
 
-    nsigmas = len(sigmas)
-
     doalchemy, pd = get_alchemy(alchemy, emax=100, r_width=alchemy_group_width, c_width=alchemy_period_width)
-
-    sigmas = np.array(sigmas)
-    assert len(sigmas.shape) == 1
-
-    return fget_atomic_kernels_fchl(A, B, neighbors1, neighbors2, sigmas, \
-                na1, na2, nsigmas, three_body_width, two_body_width, cut_start, cut_distance, fourier_order, pd, two_body_scaling, three_body_scaling, doalchemy, two_body_power, three_body_power)
+    kernel_idx, kernel_parameters, nsigmas = get_kernel_parameters(kernel, kernel_args)
+    
+    return fget_atomic_kernels_fchl(A, B, neighbors1, neighbors2, na1, na2, nsigmas, \
+                three_body_width, two_body_width, cut_start, cut_distance, fourier_order, pd, two_body_scaling, three_body_scaling, doalchemy, two_body_power, three_body_power, kernel_idx, kernel_parameters)
 
 
-def get_atomic_symmetric_kernels(A, sigmas, \
+def get_atomic_symmetric_kernels(A, \
         two_body_scaling=np.sqrt(8), three_body_scaling=1.6,
         two_body_width=0.2, three_body_width=np.pi,
         two_body_power=4.0, three_body_power=2.0,
         cut_start=1.0, cut_distance=5.0,
         fourier_order=1, alchemy="periodic-table",
-        alchemy_period_width=1.6, alchemy_group_width=1.6):
+        alchemy_period_width=1.6, alchemy_group_width=1.6,
+        kernel="gaussian", kernel_args=None):
     """ Calculates the Gaussian kernel matrix K, where :math:`K_{ij}`:
 
             :math:`K_{ij} = \\exp \\big( -\\frac{\\|A_i - B_j\\|_2^2}{2\sigma^2} \\big)`
@@ -607,12 +587,8 @@ def get_atomic_symmetric_kernels(A, sigmas, \
     for i, x in enumerate(A):
         neighbors1[i] = len(np.where(x[0]< cut_distance)[0])
 
-    nsigmas = len(sigmas)
-
     doalchemy, pd = get_alchemy(alchemy, emax=100, r_width=alchemy_group_width, c_width=alchemy_period_width)
+    kernel_idx, kernel_parameters, nsigmas = get_kernel_parameters(kernel, kernel_args)
 
-    sigmas = np.array(sigmas)
-    assert len(sigmas.shape) == 1, "Second argument (sigmas) is not a 1D list/numpy.array!"
-
-    return fget_atomic_symmetric_kernels_fchl(A, neighbors1, sigmas, \
-                na1, nsigmas, three_body_width, two_body_width, cut_start, cut_distance, fourier_order, pd, two_body_scaling, three_body_scaling, doalchemy, two_body_power, three_body_power)
+    return fget_atomic_symmetric_kernels_fchl(A, neighbors1, na1, nsigmas, \
+                three_body_width, two_body_width, cut_start, cut_distance, fourier_order, pd, two_body_scaling, three_body_scaling, doalchemy, two_body_power, three_body_power, kernel_idx, kernel_parameters)
