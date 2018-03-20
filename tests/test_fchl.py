@@ -1053,25 +1053,25 @@ def test_fchl_polynomial2():
             for ii in range(Sii.shape[0]):
                 for jj in range(Sjj.shape[0]):
 
-                    K_test[i,j] += 1.0 + 2.0 * Sij[ii,jj] + 3.0 * Sij[ii,jj]**2
+                    K_test[i,j] += 4.0 + 2.0 * Sij[ii,jj] + 3.0 * Sij[ii,jj]**2
 
     assert np.allclose(K, K_test), "Error in FCHL polynomial2 kernels"
 
 if __name__ == "__main__":
 
-    # test_krr_fchl_local()
-    # test_krr_fchl_global()
-    # test_krr_fchl_atomic()
-    # test_fchl_local_periodic()
-    # test_fchl_alchemy()
-    # test_fchl_linear()
-    # test_fchl_polynomial()
-    # test_fchl_sigmoid()
-    # test_fchl_multiquadratic()
-    # test_fchl_inverse_multiquadratic()
-    # test_fchl_bessel()
-    # test_fchl_l2()
-    # test_fchl_matern()
+    test_krr_fchl_local()
+    test_krr_fchl_global()
+    test_krr_fchl_atomic()
+    test_fchl_local_periodic()
+    test_fchl_alchemy()
+    test_fchl_linear()
+    test_fchl_polynomial()
+    test_fchl_sigmoid()
+    test_fchl_multiquadratic()
+    test_fchl_inverse_multiquadratic()
+    test_fchl_bessel()
+    test_fchl_l2()
+    test_fchl_matern()
     test_fchl_cauchy()
     test_fchl_polynomial2()
 
