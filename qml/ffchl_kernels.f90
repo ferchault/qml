@@ -234,6 +234,58 @@ subroutine matern_kernel(s11, s22, s12, parameters, kernel)
 end subroutine matern_kernel 
 
 
+subroutine cauchy_kernel(s11, s22, s12, parameters, k)
+
+    implicit none
+
+    double precision, intent(in) :: s11
+    double precision, intent(in) :: s22
+    double precision, intent(in) :: s12
+    double precision, intent(in), dimension(:,:) :: parameters
+
+    double precision, intent(out), dimension(:) :: k
+
+    integer :: i
+    double precision :: l2
+    
+    l2 = s11 + s22 - 2.0d0*s12 
+
+    do i = 1, size(k)
+        k(i) = 1.0d0 /(1.0d0 + l2/parameters(i,1)**2)
+    enddo
+
+end subroutine cauchy_kernel 
+
+subroutine polynomial2_kernel(s11, s22, s12, parameters, k)
+
+    implicit none
+
+    double precision, intent(in) :: s11
+    double precision, intent(in) :: s22
+    double precision, intent(in) :: s12
+    double precision, intent(in), dimension(:,:) :: parameters
+
+    double precision, intent(out), dimension(:) :: k
+
+    integer :: i
+    double precision :: l2
+    
+    do i = 1, size(k)
+        k(i) = parameters(1, i) &
+           & + parameters(2, i) * s12 &
+           & + parameters(3, i) * s12**2 &
+           & + parameters(4, i) * s12**3 &
+           & + parameters(5, i) * s12**4 &
+           & + parameters(6, i) * s12**5 &
+           & + parameters(7, i) * s12**6 &
+           & + parameters(8, i) * s12**7 &
+           & + parameters(9, i) * s12**8 &
+           & + parameters(10,i) * s12**9
+    enddo
+    
+    
+end subroutine polynomial2_kernel
+
 function kernel(s11, s22, s12, kernel_idx, parameters) result(k)
 
     implicit none
@@ -276,6 +328,13 @@ function kernel(s11, s22, s12, kernel_idx, parameters) result(k)
     
     else if (kernel_idx == 9) then
         call matern_kernel(s11, s22, s12, parameters, k)
+    
+    else if (kernel_idx == 10) then
+        call cauchy_kernel(s11, s22, s12, parameters, k)
+    
+    else if (kernel_idx == 11) then
+        call polynomial2_kernel(s11, s22, s12, parameters, k)
+
 
     else
         write (*,*) "QML ERROR: Unknown kernel function requested:", kernel_idx

@@ -205,6 +205,40 @@ def get_matern_parameters(tags):
 
     return 9, parameters, n_kernels
 
+
+def get_cauchy_parameters(tags):
+    
+    if tags is None:
+        tags = {
+            "sigma": [1.0],
+
+        }
+
+    parameters = np.array([
+                tags["sigma"],
+            ])
+    
+    np.resize(parameters, (1,len(tags["sigma"])))
+    n_kernels = len(tags["sigma"])
+    
+    return 10, parameters, n_kernels
+
+def get_polynomial2_parameters(tags):
+    
+    if tags is None:
+        tags = {
+            "coeff": [[1.0, 1.0, 1.0]],
+        }
+
+    parameters = np.zeros((10,len(tags["coeff"])))
+
+    for i, c in enumerate(tags["coeff"]):
+        for j, v in enumerate(c):
+            parameters[j,i] = v
+
+    n_kernels = len(tags["coeff"])
+    return 11, parameters, n_kernels
+
 def get_kernel_parameters(name, tags):
 
     parameters = None
@@ -237,6 +271,12 @@ def get_kernel_parameters(name, tags):
 
     elif name == "matern":
         idx, parameters, n_kernels = get_matern_parameters(tags)
+
+    elif name == "cauchy":
+        idx, parameters, n_kernels = get_cauchy_parameters(tags)
+    
+    elif name == "polynomial2":
+        idx, parameters, n_kernels = get_polynomial2_parameters(tags)
 
     else:
 

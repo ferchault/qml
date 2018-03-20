@@ -944,19 +944,134 @@ def test_fchl_matern():
 
     assert np.allclose(K, K_test), "Error in FCHL matern kernels"
 
+
+def test_fchl_cauchy():
+
+    test_dir = os.path.dirname(os.path.realpath(__file__))
+
+    # Parse file containing PBE0/def2-TZVP heats of formation and xyz filenames
+    data = get_energies(test_dir + "/data/hof_qm7.txt")
+
+    # Generate a list of qml.Compound() objects"
+    mols = []
+
+    for xyz_file in sorted(data.keys())[:5]:
+
+        # Initialize the qml.Compound() objects
+        mol = qml.Compound(xyz=test_dir + "/qm7/" + xyz_file)
+
+        # This is a Molecular Coulomb matrix sorted by row norm
+        mol.representation = generate_representation(mol.coordinates, \
+                                mol.nuclear_charges, cut_distance=1e6)
+        mols.append(mol)
+
+    X = np.array([mol.representation for mol in mols])
+    
+    kernel_args = {
+        "kernel": "cauchy",
+        "kernel_args": {
+            "sigma": [2.0],
+        },
+    }
+
+    linear_kernel_args = {
+        "kernel": "linear",
+        "kernel_args": {
+            "c": [0.0],
+        },
+    }
+
+
+    K = get_local_symmetric_kernels(X, **kernel_args)[0]
+
+    K_test = np.zeros((len(mols),len(mols)))
+
+    for i, Xi in enumerate(X):
+        Sii = get_atomic_kernels(Xi[:mols[i].natoms], Xi[:mols[i].natoms], **linear_kernel_args)[0]
+        for j, Xj in enumerate(X):
+
+            Sjj = get_atomic_kernels(Xj[:mols[j].natoms], Xj[:mols[j].natoms], **linear_kernel_args)[0]
+            Sij = get_atomic_kernels(Xi[:mols[i].natoms], Xj[:mols[j].natoms], **linear_kernel_args)[0]
+
+            for ii in range(Sii.shape[0]):
+                for jj in range(Sjj.shape[0]):
+
+                    l2 = Sii[ii,ii] + Sjj[jj,jj] - 2 * Sij[ii,jj]
+                    K_test[i,j] += 1.0 / (1.0 + l2/2.0**2)
+
+    assert np.allclose(K, K_test), "Error in FCHL cauchy kernels"
+
+
+def test_fchl_polynomial2():
+
+    test_dir = os.path.dirname(os.path.realpath(__file__))
+
+    # Parse file containing PBE0/def2-TZVP heats of formation and xyz filenames
+    data = get_energies(test_dir + "/data/hof_qm7.txt")
+
+    # Generate a list of qml.Compound() objects"
+    mols = []
+
+    for xyz_file in sorted(data.keys())[:5]:
+
+        # Initialize the qml.Compound() objects
+        mol = qml.Compound(xyz=test_dir + "/qm7/" + xyz_file)
+
+        # This is a Molecular Coulomb matrix sorted by row norm
+        mol.representation = generate_representation(mol.coordinates, \
+                                mol.nuclear_charges, cut_distance=1e6)
+        mols.append(mol)
+
+    X = np.array([mol.representation for mol in mols])
+    
+    kernel_args = {
+        "kernel": "polynomial2",
+        "kernel_args": {
+            "coeff": [[1.0, 2.0, 3.0]],
+        },
+    }
+
+    linear_kernel_args = {
+        "kernel": "linear",
+        "kernel_args": {
+            "c": [0.0],
+        },
+    }
+
+
+    K = get_local_symmetric_kernels(X, **kernel_args)[0]
+
+    K_test = np.zeros((len(mols),len(mols)))
+
+    for i, Xi in enumerate(X):
+        Sii = get_atomic_kernels(Xi[:mols[i].natoms], Xi[:mols[i].natoms], **linear_kernel_args)[0]
+        for j, Xj in enumerate(X):
+
+            Sjj = get_atomic_kernels(Xj[:mols[j].natoms], Xj[:mols[j].natoms], **linear_kernel_args)[0]
+            Sij = get_atomic_kernels(Xi[:mols[i].natoms], Xj[:mols[j].natoms], **linear_kernel_args)[0]
+
+            for ii in range(Sii.shape[0]):
+                for jj in range(Sjj.shape[0]):
+
+                    K_test[i,j] += 1.0 + 2.0 * Sij[ii,jj] + 3.0 * Sij[ii,jj]**2
+
+    assert np.allclose(K, K_test), "Error in FCHL polynomial2 kernels"
+
 if __name__ == "__main__":
 
-    test_krr_fchl_local()
-    test_krr_fchl_global()
-    test_krr_fchl_atomic()
-    test_fchl_local_periodic()
-    test_fchl_alchemy()
-    test_fchl_linear()
-    test_fchl_polynomial()
-    test_fchl_sigmoid()
-    test_fchl_multiquadratic()
-    test_fchl_inverse_multiquadratic()
-    test_fchl_bessel()
-    test_fchl_l2()
-    test_fchl_matern()
+    # test_krr_fchl_local()
+    # test_krr_fchl_global()
+    # test_krr_fchl_atomic()
+    # test_fchl_local_periodic()
+    # test_fchl_alchemy()
+    # test_fchl_linear()
+    # test_fchl_polynomial()
+    # test_fchl_sigmoid()
+    # test_fchl_multiquadratic()
+    # test_fchl_inverse_multiquadratic()
+    # test_fchl_bessel()
+    # test_fchl_l2()
+    # test_fchl_matern()
+    test_fchl_cauchy()
+    test_fchl_polynomial2()
 
