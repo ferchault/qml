@@ -46,8 +46,9 @@ subroutine gaussian_kernel(s11, s22, s12, parameters, k)
     double precision :: l2
 
     l2 = s11 + s22 - 2.0d0*s12 
+
     do i = 1, size(k)
-        k(i) = exp(l2 * parameters(1,i)) 
+        k(i) = exp(l2 * parameters(i,1)) 
     enddo
 
 end subroutine gaussian_kernel 
@@ -64,7 +65,7 @@ subroutine linear_kernel(s12, parameters, k)
     integer :: i
 
     do i = 1, size(k)
-        k(i) = s12 + parameters(1,i)
+        k(i) = s12 + parameters(i,1)
     enddo
 
 end subroutine linear_kernel 
@@ -82,7 +83,7 @@ subroutine polynomial_kernel(s12, parameters, k)
     integer :: i
 
     do i = 1, size(k)
-        k(i) = (parameters(1,i) * s12 + parameters(2,i))**parameters(3,i)
+        k(i) = (parameters(i,1) * s12 + parameters(i,2))**parameters(i,3)
     enddo
 
 end subroutine polynomial_kernel 
@@ -99,7 +100,7 @@ subroutine sigmoid_kernel(s12, parameters, k)
     integer :: i
 
     do i = 1, size(k)
-        k(i) = tanh(parameters(1,i) * s12 + parameters(2,i))
+        k(i) = tanh(parameters(i,1) * s12 + parameters(i,2))
     enddo
 
 end subroutine sigmoid_kernel 
@@ -122,7 +123,7 @@ subroutine multiquadratic_kernel(s11, s22, s12, parameters, k)
     l2 = s11 + s22 - 2.0d0*s12 
 
     do i = 1, size(k)
-        k(i) = sqrt(l2 + parameters(1,i)**2)
+        k(i) = sqrt(l2 + parameters(i,1)**2)
     enddo
 
 end subroutine multiquadratic_kernel 
@@ -163,8 +164,8 @@ subroutine bessel_kernel(s12, parameters, k)
     integer :: i
     
     do i = 1, size(k)
-        k(i) = BESSEL_JN(int(parameters(2,i)), parameters(1,i) *s12) & 
-            & / (s12**(-parameters(3,i)*(parameters(2,i) + 1)))
+        k(i) = BESSEL_JN(int(parameters(i,2)), parameters(i,1) *s12) & 
+            & / (s12**(-parameters(i,3)*(parameters(i,2) + 1)))
     enddo
 
 end subroutine bessel_kernel 
@@ -186,7 +187,7 @@ subroutine l2_kernel(s11, s22, s12, parameters, k)
     l2 = s11 + s22 - 2.0d0*s12 
 
     do i = 1, size(k)
-        k(i) = l2*parameters(1,i) + parameters(2,i)
+        k(i) = l2*parameters(i,1) + parameters(i,2)
     enddo
 
 end subroutine l2_kernel 
@@ -215,18 +216,16 @@ subroutine matern_kernel(s11, s22, s12, parameters, kernel)
     kernel(:) = 0.0d0    
 
     do i = 1, size(kernel)
-        n = int(parameters(2,i))
+        n = int(parameters(i,2))
         v = n + 0.5d0
 
-        rho = 2.0d0 * sqrt(2.0d0 * v) * l2  / parameters(1,i) 
+        rho = 2.0d0 * sqrt(2.0d0 * v) * l2  / parameters(i,1) 
 
         do k = 0, n
 
-            fact = parameters(3+k,i)
+            fact = parameters(i,3+k)
 
             kernel(i) = kernel(i) + fact * rho**(n-k)
-
-            ! write (*,*) l2, rho, fact, rho**(n-k), n-k
 
         enddo
     enddo
@@ -271,16 +270,16 @@ subroutine polynomial2_kernel(s11, s22, s12, parameters, k)
     double precision :: l2
     
     do i = 1, size(k)
-        k(i) = parameters(1, i) &
-           & + parameters(2, i) * s12 &
-           & + parameters(3, i) * s12**2 &
-           & + parameters(4, i) * s12**3 &
-           & + parameters(5, i) * s12**4 &
-           & + parameters(6, i) * s12**5 &
-           & + parameters(7, i) * s12**6 &
-           & + parameters(8, i) * s12**7 &
-           & + parameters(9, i) * s12**8 &
-           & + parameters(10,i) * s12**9
+        k(i) = parameters(i,  1) &
+           & + parameters(i,  2) * s12 &
+           & + parameters(i,  3) * s12**2 &
+           & + parameters(i,  4) * s12**3 &
+           & + parameters(i,  5) * s12**4 &
+           & + parameters(i,  6) * s12**5 &
+           & + parameters(i,  7) * s12**6 &
+           & + parameters(i,  8) * s12**7 &
+           & + parameters(i,  9) * s12**8 &
+           & + parameters(i, 10) * s12**9
     enddo
     
     
@@ -299,7 +298,7 @@ function kernel(s11, s22, s12, kernel_idx, parameters) result(k)
     integer :: n
     double precision, allocatable, dimension(:) :: k
 
-    n = size(parameters, dim=2)
+    n = size(parameters, dim=1)
     allocate(k(n))
 
     if (kernel_idx == 1) then
@@ -334,7 +333,6 @@ function kernel(s11, s22, s12, kernel_idx, parameters) result(k)
     
     else if (kernel_idx == 11) then
         call polynomial2_kernel(s11, s22, s12, parameters, k)
-
 
     else
         write (*,*) "QML ERROR: Unknown kernel function requested:", kernel_idx

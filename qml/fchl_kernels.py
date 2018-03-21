@@ -75,7 +75,7 @@ def get_polynomial_parameters(tags):
                 tags["alpha"],
                 tags["c"],
                 tags["d"]
-            ])
+            ]).T
     assert len(tags["alpha"]) == len(tags["c"])
     assert len(tags["alpha"]) == len(tags["d"])
 
@@ -95,7 +95,7 @@ def get_sigmoid_parameters(tags):
     parameters = np.array([
                 tags["alpha"],
                 tags["c"],
-            ])
+            ]).T
     assert len(tags["alpha"]) == len(tags["c"])
     n_kernels = len(tags["alpha"])
 
@@ -112,7 +112,7 @@ def get_multiquadratic_parameters(tags):
 
     parameters = np.array([
                 tags["c"],
-            ])
+            ]).T
     
     np.resize(parameters, (1,len(tags["c"])))
     n_kernels = len(tags["c"])
@@ -130,7 +130,7 @@ def get_inverse_multiquadratic_parameters(tags):
 
     parameters = np.array([
                 tags["c"],
-            ])
+            ]).T
     
     np.resize(parameters, (1,len(tags["c"])))
     n_kernels = len(tags["c"])
@@ -151,7 +151,7 @@ def get_bessel_parameters(tags):
                 tags["sigma"],
                 tags["v"],
                 tags["n"]
-            ])
+            ]).T
     assert len(tags["sigma"]) == len(tags["v"])
     assert len(tags["sigma"]) == len(tags["n"])
 
@@ -171,7 +171,7 @@ def get_l2_parameters(tags):
     parameters = np.array([
                 tags["alpha"],
                 tags["c"],
-            ])
+            ]).T
     assert len(tags["alpha"]) == len(tags["c"])
     n_kernels = len(tags["alpha"])
 
@@ -202,6 +202,7 @@ def get_matern_parameters(tags):
         for k in range(0, n+1):
             parameters[2+k,i] = factorial(n + k) / factorial(2*n) * binom(n, k)
 
+    parameters = parameters.T
 
     return 9, parameters, n_kernels
 
@@ -216,11 +217,11 @@ def get_cauchy_parameters(tags):
 
     parameters = np.array([
                 tags["sigma"],
-            ])
+            ]).T
     
     np.resize(parameters, (1,len(tags["sigma"])))
     n_kernels = len(tags["sigma"])
-    
+
     return 10, parameters, n_kernels
 
 def get_polynomial2_parameters(tags):
@@ -237,6 +238,7 @@ def get_polynomial2_parameters(tags):
             parameters[j,i] = v
 
     n_kernels = len(tags["coeff"])
+    parameters = parameters.T
     return 11, parameters, n_kernels
 
 def get_kernel_parameters(name, tags):

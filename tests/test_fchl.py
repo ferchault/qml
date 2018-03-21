@@ -998,6 +998,8 @@ def test_fchl_cauchy():
 
                     l2 = Sii[ii,ii] + Sjj[jj,jj] - 2 * Sij[ii,jj]
                     K_test[i,j] += 1.0 / (1.0 + l2/2.0**2)
+    print(K)
+    print(K_test)
 
     assert np.allclose(K, K_test), "Error in FCHL cauchy kernels"
 
@@ -1053,7 +1055,7 @@ def test_fchl_polynomial2():
             for ii in range(Sii.shape[0]):
                 for jj in range(Sjj.shape[0]):
 
-                    K_test[i,j] += 4.0 + 2.0 * Sij[ii,jj] + 3.0 * Sij[ii,jj]**2
+                    K_test[i,j] += 1.0 + 2.0 * Sij[ii,jj] + 3.0 * Sij[ii,jj]**2
 
     assert np.allclose(K, K_test), "Error in FCHL polynomial2 kernels"
 
