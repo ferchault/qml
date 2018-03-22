@@ -200,7 +200,7 @@ def get_matern_parameters(tags):
 
         n = int(tags["n"][i])
         for k in range(0, n+1):
-            parameters[2+k,i] = factorial(n + k) / factorial(2*n) * binom(n, k)
+            parameters[2+k,i] = float(factorial(n + k)  * binom(n, k))/ factorial(2*n)
 
     parameters = parameters.T
 

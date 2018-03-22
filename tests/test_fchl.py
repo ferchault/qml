@@ -524,7 +524,6 @@ def test_fchl_linear():
                 for jj in range(Sjj.shape[0]):
 
                     l2 = Sii[ii,ii] + Sjj[jj,jj] - 2 * Sij[ii,jj]
-                    # print(l2)
                     K_test[i,j] += np.exp(- l2 / (2*(2.5**2)))
 
     assert np.allclose(K, K_test), "Error in FCHL linear kernels"
@@ -939,7 +938,7 @@ def test_fchl_matern():
 
                     for k in range(0, n+1):
                         fact = float(factorial(n+k)) / factorial(2*n) * binom(n,k)
-                        K_test[i,j] += fact * rho**(n-k)
+                        K_test[i,j] += np.exp(-0.5*rho) * fact * rho**(n-k)
 
 
     assert np.allclose(K, K_test), "Error in FCHL matern kernels"
@@ -998,8 +997,6 @@ def test_fchl_cauchy():
 
                     l2 = Sii[ii,ii] + Sjj[jj,jj] - 2 * Sij[ii,jj]
                     K_test[i,j] += 1.0 / (1.0 + l2/2.0**2)
-    print(K)
-    print(K_test)
 
     assert np.allclose(K, K_test), "Error in FCHL cauchy kernels"
 

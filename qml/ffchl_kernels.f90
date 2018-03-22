@@ -225,7 +225,7 @@ subroutine matern_kernel(s11, s22, s12, parameters, kernel)
 
             fact = parameters(i,3+k)
 
-            kernel(i) = kernel(i) + fact * rho**(n-k)
+            kernel(i) = kernel(i) + exp(-0.5d0 * rho) * fact * rho**(n-k)
 
         enddo
     enddo
