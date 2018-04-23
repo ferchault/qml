@@ -225,7 +225,7 @@ subroutine matern_kernel(s11, s22, s12, parameters, kernel)
 
             fact = parameters(i,3+k)
 
-            kernel(i) = kernel(i) + fact * rho**(n-k)
+            kernel(i) = kernel(i) + exp(-0.5d0 * rho) * fact * rho**(n-k)
 
         enddo
     enddo
@@ -255,19 +255,16 @@ subroutine cauchy_kernel(s11, s22, s12, parameters, k)
 
 end subroutine cauchy_kernel 
 
-subroutine polynomial2_kernel(s11, s22, s12, parameters, k)
+subroutine polynomial2_kernel(s12, parameters, k)
 
     implicit none
 
-    double precision, intent(in) :: s11
-    double precision, intent(in) :: s22
     double precision, intent(in) :: s12
     double precision, intent(in), dimension(:,:) :: parameters
 
     double precision, intent(out), dimension(:) :: k
 
     integer :: i
-    double precision :: l2
     
     do i = 1, size(k)
         k(i) = parameters(i,  1) &
@@ -332,7 +329,7 @@ function kernel(s11, s22, s12, kernel_idx, parameters) result(k)
         call cauchy_kernel(s11, s22, s12, parameters, k)
     
     else if (kernel_idx == 11) then
-        call polynomial2_kernel(s11, s22, s12, parameters, k)
+        call polynomial2_kernel(s12, parameters, k)
 
     else
         write (*,*) "QML ERROR: Unknown kernel function requested:", kernel_idx

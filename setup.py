@@ -19,7 +19,7 @@ FORTRAN = "f90"
 
 # GNU (default)
 COMPILER_FLAGS = ["-O3", "-fopenmp", "-m64", "-march=native", "-fPIC",
-                    "-Wno-maybe-uninitialized", "-Wno-unused-function", "-Wno-cpp"]
+          "-Wno-maybe-uninitialized", "-Wno-unused-function", "-Wno-cpp"]
 LINKER_FLAGS = ["-lgomp"]
 MATH_LINKER_FLAGS = ["-lblas", "-llapack"]
 
@@ -49,8 +49,9 @@ ext_ffchl_module = Extension(name = 'ffchl_module',
                                 'qml/ffchl_module.f90',
                                 'qml/ffchl_kernels.f90',
                                 'qml/ffchl_scalar_kernels.f90',
+                                'qml/ffchl_vector_kernels.f90',
                             ],
-                          extra_f90_compile_args = COMPILER_FLAGS,
+                          extra_f90_compile_args = COMPILER_FLAGS + ["-Wno-unused-dummy-argument"],
                           extra_f77_compile_args = COMPILER_FLAGS,
                           extra_compile_args = COMPILER_FLAGS ,
                           extra_link_args = LINKER_FLAGS + MATH_LINKER_FLAGS,

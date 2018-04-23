@@ -939,7 +939,7 @@ def test_fchl_matern():
 
                     for k in range(0, n+1):
                         fact = float(factorial(n+k)) / factorial(2*n) * binom(n,k)
-                        K_test[i,j] += fact * rho**(n-k)
+                        K_test[i,j] += np.exp(-0.5 * rho) * fact * rho**(n-k)
 
 
     assert np.allclose(K, K_test), "Error in FCHL matern kernels"
