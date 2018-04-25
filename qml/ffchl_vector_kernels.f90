@@ -1632,3 +1632,344 @@ subroutine fget_atomic_gradient_kernels_fchl(x1, x2, n1, n2, nneigh1, nneigh2, &
     write (*,"(A,F12.4,A)") "                         Time = ", t_end - t_start, " s"
 
 end subroutine fget_atomic_gradient_kernels_fchl
+
+
+subroutine fget_kernels_fchl_ef(x1, x2, n1, n2, nneigh1, nneigh2, nm1, nm2, nsigmas, &
+       & t_width, d_width, cut_start, cut_distance, order, pd, &
+       & distance_scale, angular_scale, alchemy, two_body_power, three_body_power, &
+       & df, kernel_idx, parameters, kernels)
+
+    use ffchl_module, only: scalar, get_angular_norm2, get_pmax, get_ksi, init_cosp_sinp, &
+        & get_selfscalar, get_ksi_ef, init_cosp_sinp_ef
+    
+    use ffchl_kernels, only: kernel
+
+    use omp_lib, only: omp_get_wtime
+
+    implicit none
+
+    ! fchl descriptors for the training set, format (i,maxatoms,5,maxneighbors)
+    double precision, dimension(:,:,:,:), intent(in) :: x1
+    double precision, dimension(:,:,:,:), intent(in) :: x2
+
+    ! List of numbers of atoms in each molecule
+    integer, dimension(:), intent(in) :: n1
+    integer, dimension(:), intent(in) :: n2
+    
+    ! Number of molecules
+    integer, intent(in) :: nm1
+    integer, intent(in) :: nm2
+
+    ! Number of sigmas
+    integer, intent(in) :: nsigmas
+
+    ! Number of neighbors for each atom in each compound
+    integer, dimension(:,:), intent(in) :: nneigh1
+    integer, dimension(:,:), intent(in) :: nneigh2
+
+    ! Angular Gaussian width
+    double precision, intent(in) :: t_width
+
+    ! Distance Gaussian width
+    double precision, intent(in) :: d_width
+
+    ! Fraction of cut_distance at which cut-off starts
+    double precision, intent(in) :: cut_start
+    double precision, intent(in) :: cut_distance
+    
+    ! Truncation order for Fourier terms
+    integer, intent(in) :: order
+
+    ! Periodic table distance matrix
+    double precision, dimension(:,:), intent(in) :: pd
+
+    ! Scaling for angular and distance terms
+    double precision, intent(in) :: distance_scale
+    double precision, intent(in) :: angular_scale
+
+    ! Switch alchemy on or off
+    logical, intent(in) :: alchemy
+
+    ! Decaying power laws for two- and three-body terms
+    double precision, intent(in) :: two_body_power
+    double precision, intent(in) :: three_body_power
+
+
+    double precision, intent(in) :: df
+
+    ! Kernel ID and corresponding parameters
+    integer, intent(in) :: kernel_idx
+    double precision, dimension(:,:), intent(in) :: parameters
+
+    ! Resulting alpha vector
+    ! double precision, dimension(nsigmas,nm1,nm2), intent(out) :: kernels
+    double precision, dimension(nsigmas,nm1*3,nm2*3), intent(out) :: kernels
+    
+    double precision, dimension(nsigmas):: kernel_sum1
+    double precision, dimension(nsigmas):: kernel_sum2
+
+    ! Internal counters
+    integer :: i, j
+    integer :: ni, nj
+    integer :: a, b
+    integer :: xyz, pm
+    integer :: xyz1, pm1
+    integer :: xyz2, pm2
+
+    integer :: idx_a, idx_b
+
+    ! Temporary variables necessary for parallelization
+    double precision :: s12
+
+    ! ! Pre-computed terms in the full distance matrix
+    ! double precision, allocatable, dimension(:,:) :: self_scalar1
+    ! double precision, allocatable, dimension(:,:) :: self_scalar2
+    
+    ! Pre-computed terms in the full distance matrix
+    double precision, allocatable, dimension(:,:,:,:) :: self_scalar1_ef
+    double precision, allocatable, dimension(:,:,:,:) :: self_scalar2_ef
+
+    ! ! Pre-computed two-body weights
+    ! double precision, allocatable, dimension(:,:,:) :: ksi1
+    ! double precision, allocatable, dimension(:,:,:) :: ksi2
+    
+    ! Pre-computed two-body weights for nummerical differentation of electric field
+    double precision, allocatable, dimension(:,:,:,:,:) :: ksi1_ef
+    double precision, allocatable, dimension(:,:,:,:,:) :: ksi2_ef
+
+    ! ! Pre-computed terms for the Fourier expansion of the three-body term
+    ! double precision, allocatable, dimension(:,:,:,:,:) :: sinp1
+    ! double precision, allocatable, dimension(:,:,:,:,:) :: sinp2
+    ! double precision, allocatable, dimension(:,:,:,:,:) :: cosp1
+    ! double precision, allocatable, dimension(:,:,:,:,:) :: cosp2
+ 
+    double precision, allocatable, dimension(:,:,:,:,:,:,:) :: sinp1_ef
+    double precision, allocatable, dimension(:,:,:,:,:,:,:) :: sinp2_ef
+    double precision, allocatable, dimension(:,:,:,:,:,:,:) :: cosp1_ef
+    double precision, allocatable, dimension(:,:,:,:,:,:,:) :: cosp2_ef
+
+    ! Max index in the periodic table
+    integer :: pmax1
+    integer :: pmax2
+
+    ! Angular normalization constant
+    double precision :: ang_norm2
+   
+    ! Max number of neighbors 
+    integer :: maxneigh1
+    integer :: maxneigh2
+
+    ! Variables to calculate time 
+    double precision :: t_start, t_end
+    
+    write (*,*) "CLEARING KERNEL MEM"
+    kernels(:,:,:) = 0.0d0
+
+    ! Get max number of neighbors
+    maxneigh1 = maxval(nneigh1)
+    maxneigh2 = maxval(nneigh2)
+
+    ! Calculate angular normalization constant
+    ang_norm2 = get_angular_norm2(t_width)
+
+    ! pmax = max nuclear charge
+    pmax1 = get_pmax(x1, n1)
+    pmax2 = get_pmax(x1, n1)
+
+
+    ! Get two-body weight function
+    ksi1_ef = get_ksi_ef(x1, n1, nneigh1, two_body_power, cut_start, cut_distance, df)
+    ksi2_ef = get_ksi_ef(x2, n2, nneigh2, two_body_power, cut_start, cut_distance, df)
+   
+
+    ! Allocate three-body Fourier terms
+    allocate(cosp1_ef(nm1, 3, 2, maxval(n1), pmax1, order, maxneigh1))
+    allocate(sinp1_ef(nm1, 3, 2, maxval(n1), pmax1, order, maxneigh1))
+
+    ! Initialize and pre-calculate three-body Fourier terms
+    call init_cosp_sinp_ef(x1, n1, nneigh1, three_body_power, order, cut_start,  cut_distance, &
+        & cosp1_ef, sinp1_ef, df)
+
+
+    ! Allocate three-body Fourier terms
+    allocate(cosp2_ef(nm2, 3, 2, maxval(n2), pmax2, order, maxneigh2))
+    allocate(sinp2_ef(nm2, 3, 2, maxval(n2), pmax2, order, maxneigh2))
+    
+    ! Initialize and pre-calculate three-body Fourier terms
+    call init_cosp_sinp_ef(x2, n2, nneigh2, three_body_power, order, cut_start, cut_distance, &
+        & cosp2_ef, sinp2_ef, df)
+
+
+    allocate(self_scalar1_ef(nm1, 3,2, maxval(n1)))
+    do a = 1, nm1
+        ni = n1(a)
+        do xyz = 1, 3
+            do pm = 1, 2
+                do i = 1, ni
+
+                    self_scalar1_ef(a,xyz,pm,i) = scalar(x1(a,i,:,:), x1(a,i,:,:), nneigh1(a,i), nneigh1(a,i), &
+                        & ksi1_ef(a,xyz,pm,i,:), ksi1_ef(a,xyz,pm,i,:), &
+                        & sinp1_ef(a,xyz,pm,i,:,:,:), sinp1_ef(a,xyz,pm,i,:,:,:), &
+                        & cosp1_ef(a,xyz,pm,i,:,:,:), cosp1_ef(a,xyz,pm,i,:,:,:), &
+                        & t_width, d_width, cut_distance, order, &
+                        & pd, ang_norm2, distance_scale, angular_scale, alchemy)
+
+                enddo
+            enddo
+        enddo
+    enddo
+
+
+    allocate(self_scalar2_ef(nm2, 3,2, maxval(n2)))
+    do a = 1, nm2
+        ni = n2(a)
+        do xyz = 1, 3
+            do pm = 1, 2
+                do i = 1, ni
+
+                    self_scalar2_ef(a,xyz,pm,i) = scalar(x2(a,i,:,:), x2(a,i,:,:), nneigh2(a,i), nneigh2(a,i), &
+                        & ksi2_ef(a,xyz,pm,i,:), ksi2_ef(a,xyz,pm,i,:), &
+                        & sinp2_ef(a,xyz,pm,i,:,:,:), sinp2_ef(a,xyz,pm,i,:,:,:), &
+                        & cosp2_ef(a,xyz,pm,i,:,:,:), cosp2_ef(a,xyz,pm,i,:,:,:), &
+                        & t_width, d_width, cut_distance, order, &
+                        & pd, ang_norm2, distance_scale, angular_scale, alchemy)
+
+                enddo
+            enddo
+        enddo
+    enddo
+
+    t_start = omp_get_wtime()
+    write (*,"(A)", advance="no") "KERNEL"
+    
+    !$OMP PARALLEL DO schedule(dynamic) PRIVATE(s12,ni,nj,idx_a,idx_b,kernel_sum1,kernel_sum2)
+    do b = 1, nm2
+    nj = n2(b)
+    do j = 1, nj
+
+        do a = 1, nm1
+        ni = n1(a)
+        do i = 1, ni
+        
+            do xyz1 = 1, 3
+            do xyz2 = 1, 3
+                    
+                idx_a = (a - 1) * 3 + xyz1
+                idx_b = (b - 1) * 3 + xyz2
+            
+                do pm1 = 1, 2
+                do pm2 = 1, 2
+
+                    s12 = scalar(x1(a,i,:,:), x2(b,j,:,:), &
+                        & nneigh1(a,i), nneigh2(b,j), &
+                        & ksi1_ef(a,xyz1,pm1,i,:), ksi2_ef(b,xyz2,pm2,j,:), &
+                        & sinp1_ef(a,xyz1,pm1,i,:,:,:), sinp2_ef(b,xyz2,pm2,j,:,:,:), &
+                        & cosp1_ef(a,xyz1,pm1,i,:,:,:), cosp2_ef(b,xyz2,pm2,j,:,:,:), &
+                        & t_width, d_width, cut_distance, order, &
+                        & pd, ang_norm2, distance_scale, angular_scale, alchemy)
+
+                    
+                    if (pm1 == pm2) then
+
+                        kernels(:, idx_a, idx_b) = kernels(:, idx_a, idx_b) &
+                            & + kernel(self_scalar1_ef(a,xyz1,pm1,i),  self_scalar2_ef(b,xyz2,pm2,j), s12, &
+                            & kernel_idx, parameters)
+                    else
+                        
+                        kernels(:, idx_a, idx_b) = kernels(:, idx_a, idx_b) &
+                            & - kernel(self_scalar1_ef(a,xyz1,pm1,i),  self_scalar2_ef(b,xyz2,pm2,j), s12, &
+                            & kernel_idx, parameters)
+
+                    endif
+
+                    ! pm1 = 1
+                    ! pm2 = 1
+
+                    ! s12 = scalar(x1(a,i,:,:), x2(b,j,:,:), &
+                    !     & nneigh1(a,i), nneigh2(b,j), &
+                    !     & ksi1_ef(a,xyz1,pm1,i,:), ksi2_ef(b,xyz2,pm2,j,:), &
+                    !     & sinp1_ef(a,xyz1,pm1,i,:,:,:), sinp2_ef(b,xyz2,pm2,j,:,:,:), &
+                    !     & cosp1_ef(a,xyz1,pm1,i,:,:,:), cosp2_ef(b,xyz2,pm2,j,:,:,:), &
+                    !     & t_width, d_width, cut_distance, order, &
+                    !     & pd, ang_norm2, distance_scale, angular_scale, alchemy)
+
+
+                    ! kernel_sum1(:) = kernel(self_scalar1_ef(a,xyz1,pm1,i),  self_scalar2_ef(b,xyz2,pm2,j), s12, &
+                    !         & kernel_idx, parameters)
+
+                    ! pm1 = 1
+                    ! pm2 = 2
+
+                    ! s12 = scalar(x1(a,i,:,:), x2(b,j,:,:), &
+                    !     & nneigh1(a,i), nneigh2(b,j), &
+                    !     & ksi1_ef(a,xyz1,pm1,i,:), ksi2_ef(b,xyz2,pm2,j,:), &
+                    !     & sinp1_ef(a,xyz1,pm1,i,:,:,:), sinp2_ef(b,xyz2,pm2,j,:,:,:), &
+                    !     & cosp1_ef(a,xyz1,pm1,i,:,:,:), cosp2_ef(b,xyz2,pm2,j,:,:,:), &
+                    !     & t_width, d_width, cut_distance, order, &
+                    !     & pd, ang_norm2, distance_scale, angular_scale, alchemy)
+
+
+                    ! kernel_sum1(:) = kernel_sum1(:)  - kernel(self_scalar1_ef(a,xyz1,pm1,i),  self_scalar2_ef(b,xyz2,pm2,j), s12, &
+                    !         & kernel_idx, parameters)
+
+                    ! pm1 = 2
+                    ! pm2 = 1
+
+                    ! s12 = scalar(x1(a,i,:,:), x2(b,j,:,:), &
+                    !     & nneigh1(a,i), nneigh2(b,j), &
+                    !     & ksi1_ef(a,xyz1,pm1,i,:), ksi2_ef(b,xyz2,pm2,j,:), &
+                    !     & sinp1_ef(a,xyz1,pm1,i,:,:,:), sinp2_ef(b,xyz2,pm2,j,:,:,:), &
+                    !     & cosp1_ef(a,xyz1,pm1,i,:,:,:), cosp2_ef(b,xyz2,pm2,j,:,:,:), &
+                    !     & t_width, d_width, cut_distance, order, &
+                    !     & pd, ang_norm2, distance_scale, angular_scale, alchemy)
+
+
+                    ! kernel_sum2(:) = kernel(self_scalar1_ef(a,xyz1,pm1,i),  self_scalar2_ef(b,xyz2,pm2,j), s12, &
+                    !         & kernel_idx, parameters)
+
+                    ! pm1 = 2
+                    ! pm2 = 2
+
+                    ! s12 = scalar(x1(a,i,:,:), x2(b,j,:,:), &
+                    !     & nneigh1(a,i), nneigh2(b,j), &
+                    !     & ksi1_ef(a,xyz1,pm1,i,:), ksi2_ef(b,xyz2,pm2,j,:), &
+                    !     & sinp1_ef(a,xyz1,pm1,i,:,:,:), sinp2_ef(b,xyz2,pm2,j,:,:,:), &
+                    !     & cosp1_ef(a,xyz1,pm1,i,:,:,:), cosp2_ef(b,xyz2,pm2,j,:,:,:), &
+                    !     & t_width, d_width, cut_distance, order, &
+                    !     & pd, ang_norm2, distance_scale, angular_scale, alchemy)
+
+
+                    ! kernel_sum2(:) = kernel_sum2(:) - kernel(self_scalar1_ef(a,xyz1,pm1,i),  self_scalar2_ef(b,xyz2,pm2,j), s12, &
+                    !         & kernel_idx, parameters)
+
+                    ! kernel_sum1(:) = kernel_sum1(:) - kernel_sum2(:)
+                    ! 
+                    ! 
+
+                    ! kernels(:, idx_a, idx_b) = kernels(:, idx_a, idx_b) + kernel_sum1(:)
+
+            enddo
+            enddo
+        enddo
+        enddo
+        enddo
+    enddo
+    enddo
+    enddo
+    !$OMP END PARALLEL DO
+    
+    kernels = kernels / (4 * df**2)
+    
+    t_end = omp_get_wtime()
+    write (*,"(A,F12.4,A)") "                                  Time = ", t_end - t_start, " s"
+
+    ! deallocate(self_scalar1)
+    ! deallocate(self_scalar2)
+    ! deallocate(ksi1)
+    ! deallocate(ksi2)
+    ! deallocate(cosp1)
+    ! deallocate(cosp2)
+    ! deallocate(sinp1)
+    ! deallocate(sinp2)
+
+end subroutine fget_kernels_fchl_ef
