@@ -16,6 +16,7 @@ import qml
 from qml.math import cho_solve
 from qml.fchl import generate_representation
 from qml.fchl import generate_displaced_representations
+from qml.fchl import generate_displaced_representations_5point
 
 from qml.fchl import get_local_kernels
 from qml.fchl import get_local_symmetric_kernels
@@ -25,6 +26,7 @@ from qml.fchl import get_local_symmetric_hessian_kernels
 from qml.fchl import get_local_full_kernels
 from qml.fchl import get_local_invariant_alphas
 from qml.fchl import get_atomic_gradient_kernels
+from qml.fchl import get_smooth_atomic_gradient_kernels
 from qml.fchl import get_local_atomic_kernels
 
 SIGMAS = [2.5]
@@ -41,7 +43,7 @@ CSV_FILE = "data/amons_small.csv"
 SIGMAS = [0.01 * 2**i for i in range(20)]
 
 TRAINING = 13
-TEST     = 70
+TEST     = 7
 
 DX = 0.005
 CUT_DISTANCE = 1e6
@@ -80,6 +82,7 @@ def csv_to_molecular_reps(csv_filename, force_key="orca_forces", energy_key="orc
     distance = []
 
     disp_x = []
+    disp_x5 = []
 
     max_atoms = max([len(ast.literal_eval(df["atomtypes"][i])) for i in range(len(df))])
 
@@ -105,6 +108,9 @@ def csv_to_molecular_reps(csv_filename, force_key="orca_forces", energy_key="orc
                 max_size=max_atoms, cut_distance=CUT_DISTANCE)
         disp_rep = generate_displaced_representations(coordinates, nuclear_charges, 
                 max_size=max_atoms, cut_distance=CUT_DISTANCE, dx=DX)
+        
+        disp_rep5 = generate_displaced_representations_5point(coordinates, nuclear_charges, 
+                max_size=max_atoms, cut_distance=CUT_DISTANCE, dx=DX)
 
         distance.append(dist)
         x.append(rep)
@@ -112,13 +118,14 @@ def csv_to_molecular_reps(csv_filename, force_key="orca_forces", energy_key="orc
         e.append(energy)
 
         disp_x.append(disp_rep)
+        disp_x5.append(disp_rep5)
 
-    return np.array(x), f, e, distance, np.array(disp_x)
+    return np.array(x), f, e, distance, np.array(disp_x), np.array(disp_x5)
 
 
 def test_gp_derivative():
 
-    Xall, Fall, Eall, Dall, dXall = csv_to_molecular_reps(CSV_FILE, 
+    Xall, Fall, Eall, Dall, dXall, dXall5 = csv_to_molecular_reps(CSV_FILE,
                                         force_key=FORCE_KEY, energy_key=ENERGY_KEY)
 
     # TRAINING = int(len(Eall) * 0.66)
@@ -198,7 +205,7 @@ def test_gp_derivative():
 
 def test_gdml_derivative():
 
-    Xall, Fall, Eall, Dall, dXall = csv_to_molecular_reps(CSV_FILE, 
+    Xall, Fall, Eall, Dall, dXall, dXall5 = csv_to_molecular_reps(CSV_FILE,
                                         force_key=FORCE_KEY, energy_key=ENERGY_KEY)
 
     Eall = np.array(Eall)
@@ -267,7 +274,7 @@ def test_gdml_derivative():
         
 def test_general_derivative():
 
-    Xall, Fall, Eall, Dall, dXall = csv_to_molecular_reps(CSV_FILE, 
+    Xall, Fall, Eall, Dall, dXall, dXall5 = csv_to_molecular_reps(CSV_FILE,
                                         force_key=FORCE_KEY, energy_key=ENERGY_KEY)
 
     Eall = np.array(Eall)
@@ -275,12 +282,14 @@ def test_general_derivative():
 
     X  = Xall[:TRAINING]
     dX = dXall[:TRAINING]
+    dX5 = dXall5[:TRAINING]
     F  = Fall[:TRAINING]
     E  = Eall[:TRAINING]
     D  = Dall[:TRAINING]
     
     Xs = Xall[-TEST:]
     dXs = dXall[-TEST:]
+    dXs5 = dXall5[-TEST:]
     Fs = Fall[-TEST:]
     Es = Eall[-TEST:]
     Ds = Dall[-TEST:]
@@ -293,12 +302,11 @@ def test_general_derivative():
     Kt_force = get_atomic_gradient_kernels(X,  dX, dx=DX, **KERNEL_ARGS)
     Ks_force = get_atomic_gradient_kernels(X, dXs, dx=DX, **KERNEL_ARGS)
     
+    Kt_force5 = get_smooth_atomic_gradient_kernels(X,  dX5, dx=DX, **KERNEL_ARGS)
+    Ks_force5 = get_smooth_atomic_gradient_kernels(X, dXs5, dx=DX, **KERNEL_ARGS)
+
     Kt_energy = get_local_atomic_kernels(X, X,   **KERNEL_ARGS)
     Ks_energy = get_local_atomic_kernels(X, Xs,  **KERNEL_ARGS)
-   
-    print(alphas)
-    print(alphas.shape)
-    # exit()
 
     F = np.concatenate(F)
     Fs = np.concatenate(Fs)
@@ -309,14 +317,19 @@ def test_general_derivative():
         Ft  = np.zeros((Kt_force[i,:,:].shape[1]/3,3))
         Fss = np.zeros((Ks_force[i,:,:].shape[1]/3,3))
 
+        Ft5  = np.zeros((Kt_force5[i,:,:].shape[1]/3,3))
+        Fss5 = np.zeros((Ks_force5[i,:,:].shape[1]/3,3))
+
         for xyz in range(3):
             
             Ft[:,xyz]  = np.dot(Kt_force[i,:,xyz::3].T, alphas[i])
             Fss[:,xyz] = np.dot(Ks_force[i,:,xyz::3].T, alphas[i])
-        
+            
+            Ft5[:,xyz]  = np.dot(Kt_force5[i,:,xyz::3].T, alphas[i])
+            Fss5[:,xyz] = np.dot(Ks_force5[i,:,xyz::3].T, alphas[i])
+       
         Ess = np.dot(Ks_energy[i].T, alphas[i])
         Et  = np.dot(Kt_energy[i].T, alphas[i])
-        
 
         slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(E.flatten(), Et.flatten())
         print("TRAINING ENERGY   MAE = %10.4f     sigma = %10.4f  slope = %10.4f  intercept = %10.4f  r^2 = %9.6f" % \
@@ -326,6 +339,10 @@ def test_general_derivative():
         print("TRAINING FORCE    MAE = %10.4f     sigma = %10.4f  slope = %10.4f  intercept = %10.4f  r^2 = %9.6f" % \
                (np.mean(np.abs(Ft.flatten() - F.flatten())), sigma, slope, intercept, r_value ))
         
+        slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(F.flatten(), Ft5.flatten())
+        print("TRAINING FORCE_5  MAE = %10.4f     sigma = %10.4f  slope = %10.4f  intercept = %10.4f  r^2 = %9.6f" % \
+               (np.mean(np.abs(Ft5.flatten() - F.flatten())), sigma, slope, intercept, r_value ))
+
         slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(Es.flatten(), Ess.flatten())
         print("TEST     ENERGY   MAE = %10.4f     sigma = %10.4f  slope = %10.4f  intercept = %10.4f  r^2 = %9.6f" % \
                 (np.mean(np.abs(Ess - Es)), sigma, slope, intercept, r_value ))
@@ -333,10 +350,14 @@ def test_general_derivative():
         slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(Fs.flatten(), Fss.flatten())
         print("TEST     FORCE    MAE = %10.4f     sigma = %10.4f  slope = %10.4f  intercept = %10.4f  r^2 = %9.6f" % \
                 (np.mean(np.abs(Fss.flatten() - Fs.flatten())), sigma, slope, intercept, r_value ))
+        
+        slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(Fs.flatten(), Fss5.flatten())
+        print("TEST     FORCE_5  MAE = %10.4f     sigma = %10.4f  slope = %10.4f  intercept = %10.4f  r^2 = %9.6f" % \
+                (np.mean(np.abs(Fss5.flatten() - Fs.flatten())), sigma, slope, intercept, r_value ))
 
 def test_derivative():
 
-    Xall, Fall, Eall, Dall, dXall = csv_to_molecular_reps(CSV_FILE, 
+    Xall, Fall, Eall, Dall, dXall, dXall5 = csv_to_molecular_reps(CSV_FILE,
                                         force_key=FORCE_KEY, energy_key=ENERGY_KEY)
 
     Eall = np.array(Eall)

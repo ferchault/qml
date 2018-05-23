@@ -76,7 +76,7 @@ function get_pmax_displaced(x, na) result(pmax)
     do a = 1, size(na, dim=1)
         b = na(a)
         do xyz = 1, 3
-            do pm = 1, 2
+            do pm = 1, size(x, dim=3)
                 do i = 1, b
                     pmax = max(pmax, int(maxval(x(a,xyz,pm,i,1,2,:na(a)))))
                 enddo
@@ -774,7 +774,7 @@ function get_ksi_displaced(x, na, nneigh, two_body_power, cut_start, cut_distanc
     double precision, allocatable, dimension(:,:,:,:,:,:) :: ksi
 
     ! Internal counters
-    integer :: maxneigh, maxatoms, nm, a, ni, i, j, pm, xyz
+    integer :: maxneigh, maxatoms, nm, a, ni, i, j, pm, xyz, ndisp
     
     double precision :: t_start, t_end
 
@@ -784,8 +784,9 @@ function get_ksi_displaced(x, na, nneigh, two_body_power, cut_start, cut_distanc
     maxneigh = maxval(nneigh)
     maxatoms = maxval(na)
     nm = size(x, dim=1)
+    ndisp = size(x, dim=3)
     
-    allocate(ksi(nm,3,2,maxval(na),maxval(na),maxneigh))
+    allocate(ksi(nm,3,ndisp,maxatoms,maxatoms,maxneigh))
 
     ksi = 0.0d0
 
@@ -793,7 +794,7 @@ function get_ksi_displaced(x, na, nneigh, two_body_power, cut_start, cut_distanc
     do a = 1, nm
         ni = na(a)
         do xyz = 1, 3
-            do pm = 1, 2
+            do pm = 1, ndisp
                 do i = 1, ni
                     do j = 1, ni
                         ksi(a, xyz, pm, i, j, :) = get_twobody_weights( &
@@ -958,12 +959,17 @@ subroutine init_cosp_sinp_displaced(x, na, nneigh, three_body_power, order, cut_
     
     double precision :: t_start, t_end
 
+    integer :: ndisp
+
+
     write (*,"(A)", advance="no") "THREE-BODY GRADIENT"
     t_start = omp_get_wtime()
     
     maxneigh = maxval(nneigh)
     maxatoms = maxval(na)
     nm = size(x, dim=1)
+
+    ndisp = size(x, dim=3)
 
     pmax = get_pmax_displaced(x, na)
 
@@ -974,11 +980,11 @@ subroutine init_cosp_sinp_displaced(x, na, nneigh, three_body_power, order, cut_
     do a = 1, nm
         ni = na(a)
         do xyz = 1, 3
-        do pm = 1, 2
+        do pm = 1, ndisp
         do i = 1, ni
             do j = 1, ni
 
-                xyz_pm = 2*xyz + pm - 2
+                xyz_pm = ndisp*(xyz - 1) + pm
 
                 fourier = get_threebody_fourier(x(a,xyz,pm,i,j,:,:), &
                     & nneigh(a, xyz, pm, i, j), &
@@ -1193,25 +1199,27 @@ function get_selfscalar_displaced(x, nm, na, nneigh, ksi, sinp, cosp, t_width, d
     double precision, allocatable, dimension(:,:,:,:,:) :: self_scalar
 
     ! Internal counters
-    integer :: a, ni, i, j, pm, xyz, xyz_pm
+    integer :: a, ni, i, j, pm, xyz, xyz_pm, ndisp
     
     double precision :: t_start, t_end
     
     write (*,"(A)", advance="no") "SELF-SCALAR GRADIENT"
     t_start = omp_get_wtime()
  
-    allocate(self_scalar(nm, 3, 2, maxval(na), maxval(na)))
+    ndisp = size(x, dim=3)
+    allocate(self_scalar(nm, 3, ndisp, maxval(na), maxval(na)))
     self_scalar = 0.0d0
 
     !$OMP PARALLEL DO PRIVATE(ni, xyz_pm) schedule(dynamic)
     do a = 1, nm
         ni = na(a)
         do xyz = 1, 3
-        do pm = 1, 2
+        do pm = 1, ndisp
         do i = 1, ni
             do j = 1, ni
                 
-            xyz_pm = 2*xyz + pm - 2
+            ! z_pm = 2*xyz + pm - 2
+            xyz_pm = ndisp*(xyz - 1) + pm
 
             self_scalar(a,xyz,pm,i,j) = scalar(x(a,xyz,pm,i,j,:,:), x(a,xyz,pm,i,j,:,:), &
                 & nneigh(a,xyz,pm,i,j), nneigh(a,xyz,pm,i,j), &

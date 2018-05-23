@@ -37,10 +37,12 @@ from .ffchl_module import fget_local_symmetric_hessian_kernels_fchl
 
 from .ffchl_module import fget_local_invariant_alphas_fchl
 from .ffchl_module import fget_atomic_gradient_kernels_fchl
+from .ffchl_module import fget_smooth_atomic_gradient_kernels_fchl
 from .ffchl_module import fget_local_atomic_kernels_fchl
 
 from .alchemy import get_alchemy
 from .fchl_kernels import get_kernel_parameters
+
 
 def generate_displaced_representations(coordinates, nuclear_charges,
                     max_size=23, neighbors=23, cut_distance = 5.0, cell=None, dx=0.005): 
@@ -74,6 +76,49 @@ def generate_displaced_representations(coordinates, nuclear_charges,
 
         for i in range(compound_size):
             for idisp, disp in enumerate([-dx, dx]):
+
+                displaced_coordinates = copy.deepcopy(coordinates)
+                displaced_coordinates[i,xyz] += disp
+
+                rep = generate_representation(displaced_coordinates, nuclear_charges,
+                    max_size=size, neighbors=neighbors, cut_distance=cut_distance, cell=cell)
+
+                reps[xyz,idisp,i,:,:,:] = rep[:,:,:]
+
+    return reps
+
+def generate_displaced_representations_5point(coordinates, nuclear_charges,
+                    max_size=23, neighbors=23, cut_distance = 5.0, cell=None, dx=0.005): 
+    """ Generates displaced representations for the FCHL kernel module.
+
+    :param coordinates: Input coordinates.
+    :type coordinates: numpy array
+    :param nuclear_charges: List of nuclear charges.
+    :type nuclear_charges: numpy array
+    :param max_size: Max number of atoms in representation.
+    :type max_size: integer
+    :param neighbors: Max number of atoms within the cut-off around an atom. (For periodic systems)
+    :type neighbors: integer
+    :param cell: Unit cell vectors. The presence of this keyword argument will generate a periodic representation.
+    :type cell: numpy array
+    :param dx: Real-space displacement for numerical derivatives, in units of angstrom.
+    :type dx: float
+    :param cut_distance: Spatial cut-off distance - must be the same as used in the kernel function call.
+    :type cut_distance: float
+    :return: FCHL representation, shape = (size,5,neighbors).
+    :rtype: numpy array
+    """
+    size = max_size
+    if cell is None:
+        neighbors=size
+    reps = np.zeros((3,5,size,size,5,neighbors))
+
+    compound_size = len(nuclear_charges)
+
+    for xyz in range(3):
+
+        for i in range(compound_size):
+            for idisp, disp in enumerate([-2*dx, -dx, 0.0, dx, 2*dx]):
 
                 displaced_coordinates = copy.deepcopy(coordinates)
                 displaced_coordinates[i,xyz] += disp
@@ -1040,6 +1085,71 @@ def get_atomic_gradient_kernels(A, B, dx = 0.005,
     naq2 = np.sum(N2) * 3
 
     return fget_atomic_gradient_kernels_fchl(A, B, N1, N2, neighbors1, neighbors2, \
+        nm1, nm2, na1, naq2, nsigmas, three_body_width, two_body_width, cut_start, cut_distance, \
+        fourier_order, pd, two_body_scaling, three_body_scaling, doalchemy, two_body_power,
+        three_body_power, dx, kernel_idx, kernel_parameters)
+
+def get_smooth_atomic_gradient_kernels(A, B, dx = 0.005,
+        two_body_scaling=np.sqrt(8), three_body_scaling=1.6,
+        two_body_width=0.2, three_body_width=np.pi,
+        two_body_power=4.0, three_body_power=2.0,
+        cut_start=1.0, cut_distance=5.0,
+        fourier_order=1, alchemy="periodic-table",
+        alchemy_period_width=1.6, alchemy_group_width=1.6, 
+        kernel="gaussian", kernel_args=None):
+
+    nm1 = A.shape[0]
+    nm2 = B.shape[0]
+
+    assert B.shape[1] == 3
+    assert B.shape[2] == 5
+    assert B.shape[5] == 5
+    assert A.shape[2] == 5
+
+    atoms_max = B.shape[4]
+    assert A.shape[1] == atoms_max
+    assert B.shape[3] == atoms_max
+
+    neighbors_max = B.shape[6]
+    assert A.shape[3] == neighbors_max
+
+
+    N1 = np.zeros((nm1),dtype=np.int32)
+
+    for a in range(nm1):
+        N1[a] = len(np.where(A[a,:,1,0] > 0.0001)[0])
+
+    neighbors1 = np.zeros((nm1, atoms_max), dtype=np.int32)
+
+    for a, representation in enumerate(A):
+        ni = N1[a]
+        for i, x in enumerate(representation[:ni]):
+            neighbors1[a,i] = len(np.where(x[0]< cut_distance)[0])
+
+    N2 = np.zeros((nm2),dtype=np.int32)
+
+    for a in range(nm2):
+        N2[a] = len(np.where(B[a,0,0,0,:,1,0] > 0.0001)[0])
+
+    neighbors2 = np.zeros((nm2, 3, 5, atoms_max, atoms_max), dtype=np.int32)
+
+    for m in range(nm2):
+        ni = N2[m]
+        for xyz in range(3):
+            for pm in range(5):
+                for i in range(ni):
+                    for a, x in enumerate(B[m,xyz,pm,i,:ni]):
+                        neighbors2[m,xyz,pm,i,a] = len(np.where(x[0]< cut_distance)[0])
+
+    doalchemy, pd = get_alchemy(alchemy, emax=100, r_width=alchemy_group_width, c_width=alchemy_period_width)
+
+    kernel_idx, kernel_parameters, nsigmas = get_kernel_parameters(kernel, kernel_args)
+
+
+    na1 = np.sum(N1)
+    naq2 = np.sum(N2) * 3
+
+    return fget_smooth_atomic_gradient_kernels_fchl(A, B, N1, N2, neighbors1, neighbors2, \
         nm1, nm2, na1, naq2, nsigmas, three_body_width, two_body_width, cut_start, cut_distance, \
         fourier_order, pd, two_body_scaling, three_body_scaling, doalchemy, two_body_power,
         three_body_power, dx, kernel_idx, kernel_parameters)
